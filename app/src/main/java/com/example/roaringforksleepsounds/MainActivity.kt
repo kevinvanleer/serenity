@@ -6,7 +6,12 @@ import android.os.PowerManager
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.waterfallPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.Button
@@ -19,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewParameter
 import androidx.compose.ui.tooling.preview.PreviewParameterProvider
+import androidx.compose.ui.unit.Dp
 import com.example.roaringforksleepsounds.ui.theme.RoaringForkSleepSoundsTheme
 
 class MainActivity : ComponentActivity() {
@@ -85,15 +91,17 @@ fun Greeting(modifier: Modifier = Modifier) {
 
 @Composable
 fun PlayPauseButton( onClick: () -> Unit = {}, isPlaying: Boolean) {
-    Button(onClick = onClick) {
+    Button(onClick = onClick, modifier = Modifier.padding(Dp(48f)).aspectRatio(1f,false)) {
         when(isPlaying) {
             false -> Icon(
                 androidx.compose.material.icons.Icons.Rounded.PlayArrow,
-                contentDescription = "Start playing sound"
+                contentDescription = "Start playing sound",
+                modifier = Modifier.width(Dp(64f)).height(Dp(64f))
             )
             else -> Icon(
                 androidx.compose.material.icons.Icons.Rounded.Pause,
-                contentDescription = "Pause sound"
+                contentDescription = "Pause sound",
+                modifier = Modifier.width(Dp(64f)).height(Dp(64f))
             )
         }
     }
