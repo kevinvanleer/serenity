@@ -269,10 +269,15 @@ fun App(
     )
     val selectedTimer: MutableState<String?> = remember { mutableStateOf(null) }
     val timeRemaining: MutableState<Duration?> = remember { mutableStateOf(null) }
+    val fractionRemaining = remember { mutableStateOf(0f) }
+
     timeRemaining.value = sleepTime?.let {
         Duration.between(Instant.now(), sleepTime)
             .apply { this.minus(this.nano.toLong(), ChronoUnit.NANOS) }
     }
+
+    fractionRemaining.value = timeRemaining.value?.toNanos()?.toDouble()
+        ?.div(timers[selectedTimer.value]?.duration?.toNanos()?.toDouble() ?: 1e12)?.toFloat() ?: 0f
     if (timeRemaining.value == null) selectedTimer.value = null
 
     Column(Modifier.fillMaxSize()) {
@@ -291,11 +296,14 @@ fun App(
                 .weight(1f)
         ) {
             CircularProgressIndicator(
-                progress = 0.5,
-                modifier = Modifier.matchParentSize(),
-                strokeWidth = 20.dp
+                progress = fractionRemaining.value,
+                modifier = Modifier
+                    .aspectRatio(1f, matchHeightConstraintsFirst = true),
+                strokeWidth = 6.dp
             )
-            PlayPauseButton(enabled = buttonEnabled, onClick = onClick, isPlaying = isPlaying)
+            Box(Modifier.padding(9.dp)) {
+                PlayPauseButton(enabled = buttonEnabled, onClick = onClick, isPlaying = isPlaying)
+            }
         }
         Box(
             contentAlignment = Alignment.CenterStart,
@@ -308,9 +316,10 @@ fun App(
                 when (sleepTime != null) {
                     true -> Text(
                         "Sleeping in ${
-                            when (timeRemaining.value!!.toMinutes() > 0) {
-                                true -> "${timeRemaining.value?.toMinutes()} minutes"
-                                else -> "${timeRemaining.value?.seconds?.coerceAtLeast(0)} seconds"
+                            timeRemaining.value?.seconds?.coerceAtLeast(0)?.let {
+                                val minutesPart = it / 60
+                                val secondsPart = it - (minutesPart * 60)
+                                "${minutesPart}:${secondsPart}"
                             }
                         }"
                     )
