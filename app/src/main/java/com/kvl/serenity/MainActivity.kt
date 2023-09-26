@@ -260,12 +260,28 @@ fun App(
     isPlaying: Boolean,
     buttonEnabled: Boolean
 ) {
+    data class ButtonDef(val duration: Duration, val label: String)
     val timers = mapOf(
-        Pair("15-min", Duration.ofMinutes(15)),
-        Pair("30-min", Duration.ofMinutes(30)),
-        Pair("45-min", Duration.ofMinutes(45)),
-        Pair("1-hour", Duration.ofHours(1)),
-        Pair("2-hour", Duration.ofHours(2)),
+        Pair("15-min", ButtonDef(
+            duration = Duration.ofMinutes(15),
+            label = "15 minutes"
+        )),
+        Pair("30-min", ButtonDef (
+            duration = Duration.ofMinutes(30),
+            label = "30 minutes"
+        )),
+        Pair("45-min", ButtonDef (
+            duration = Duration.ofMinutes(45),
+            label = "45 minutes"
+        )),
+        Pair("1-hour", ButtonDef (
+            duration = Duration.ofHours(1),
+            label = "1 hour"
+        )),
+        Pair("2-hour", ButtonDef (
+            duration = Duration.ofHours(2),
+            label = "2 hours"
+        )),
     )
     val selectedTimer: MutableState<String?> = remember { mutableStateOf(null) }
     val timeRemaining: MutableState<Duration?> = remember { mutableStateOf(null) }
