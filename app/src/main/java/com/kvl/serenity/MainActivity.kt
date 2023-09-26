@@ -3,6 +3,7 @@ package com.example.roaringforksleepsounds
 import android.media.MediaPlayer
 import android.media.VolumeShaper
 import android.os.Bundle
+import android.os.CountDownTimer
 import android.os.PowerManager
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -27,7 +28,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
@@ -40,12 +43,22 @@ import androidx.lifecycle.lifecycleScope
 import com.example.roaringforksleepsounds.ui.theme.RoaringForkSleepSoundsTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.time.Instant
+import java.time.temporal.ChronoUnit
+import java.util.Date
+import java.util.Timer
+import java.util.TimerTask
 
 const val VOLUME_RAMP_TIME = 2000L
 
 class MainActivity : ComponentActivity() {
     private lateinit var mediaPlayer: MediaPlayer
     private lateinit var nextMediaPlayer: MediaPlayer
+    private lateinit var sleepTimer: Timer
+    private var sleepTime: MutableState<Instant?> = mutableStateOf(null)
+
+    private val isPlaying = mutableStateOf(false)
+    private val enablePlayback = mutableStateOf(true)
 
     private val waveFile: Int = R.raw.roaring_fork_long_wav
 
@@ -64,8 +77,34 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun createSleepTimer(sleepTime: Int) {
+    private fun createSleepTimer(sleepDelay: Int) {
+        if (::sleepTimer.isInitialized) try {
+            //sleepTimer.cancel()
+            //sleepTime.value = null
+        } catch (_: IllegalStateException) {
+        } else sleepTimer = Timer()
 
+        sleepTime.value = Instant.now().plus(sleepDelay.toLong(), ChronoUnit.MINUTES)
+        Log.d("SleepTimer", "Creating sleep timer at $sleepTime")
+        //if (mediaPlayer.isPlaying) {
+        scheduleSleepTimer()
+        //}
+    }
+
+    private fun scheduleSleepTimer() {
+        sleepTimer.schedule(object : TimerTask() {
+            override fun run() {
+                Log.d("SleepTimer", "Executing sleep timer")
+                pausePlayback()
+            }
+        }, Date.from(sleepTime.value))
+    }
+
+    private fun pausePlayback() {
+        mediaPlayer.pause()
+        isPlaying.value = false
+        enablePlayback.value = true
+        sleepTime.value = null
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -76,15 +115,11 @@ class MainActivity : ComponentActivity() {
             VolumeShaper.Configuration.Builder()
                 .setDuration(VOLUME_RAMP_TIME)
                 .setCurve(
-                    //generateSequence(0f) { (it + 0.1f).takeUnless { new -> new > 1f } }.toMutableList().apply{add(1f)}.toFloatArray(),
-                    //generateSequence(0f) { (it + 0.1f).takeUnless { new -> new > 1f } }.toMutableList().apply{add(1f)}.toFloatArray(),
                     floatArrayOf(0f, 1f), floatArrayOf(0f, 1f)
                 )
                 .setInterpolatorType(VolumeShaper.Configuration.INTERPOLATOR_TYPE_LINEAR)
                 .build()
         )
-        val isPlaying = mutableStateOf(false)
-        val buttonEnabled = mutableStateOf(true)
         /*mediaPlayer.setOnPreparedListener {
             it.start()
         }*/
@@ -98,19 +133,24 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     App(
-                        buttonEnabled = buttonEnabled.value,
+                        buttonEnabled = enablePlayback.value,
                         isPlaying = isPlaying.value,
-                        timeRemaining = null,
+                        /*timeRemaining = sleepTime.value?.let {
+                            it.minus(
+                                Instant.now().toEpochMilli(),
+                                ChronoUnit.MILLIS
+                            )
+                        }?.toEpochMilli()?.div(1000)?.toInt(),*/
+                        sleepTime = sleepTime.value,
                         onClick = {
                             isPlaying.value = !mediaPlayer.isPlaying
                             when (mediaPlayer.isPlaying) {
                                 true -> {
-                                    buttonEnabled.value = false
+                                    enablePlayback.value = false
                                     shaper.apply(VolumeShaper.Operation.REVERSE)
                                     lifecycleScope.launch {
                                         delay(VOLUME_RAMP_TIME)
-                                        mediaPlayer.pause()
-                                        buttonEnabled.value = true
+                                        pausePlayback()
                                     }
                                 }
 
@@ -214,10 +254,43 @@ fun PlayPauseButtonPreview(
 fun App(
     onClick: () -> Unit,
     startSleepTimer: (time: Int) -> Unit,
-    timeRemaining: Int? = null,
+    sleepTime: Instant? = null,
     isPlaying: Boolean,
     buttonEnabled: Boolean
 ) {
+    val timeRemaining: MutableState<Int?> = remember { mutableStateOf(null) }
+    val countdownTimer: MutableState<CountDownTimer?> = remember { mutableStateOf(null) }
+
+    fun getTimeRemaining() = sleepTime?.minus(
+        Instant.now().toEpochMilli(),
+        ChronoUnit.MILLIS
+    )?.toEpochMilli()?.div(1000)?.toInt()
+
+    timeRemaining.value = getTimeRemaining()
+
+    when (sleepTime == null) {
+        true -> {
+            if (countdownTimer.value != null) {
+                countdownTimer.value!!.cancel()
+                countdownTimer.value = null
+            }
+        }
+
+        else -> {
+            countdownTimer.value = object : CountDownTimer(timeRemaining.value!! * 1000L, 500) {
+                override fun onTick(millisUntilFinished: Long) {
+                    timeRemaining.value = (millisUntilFinished / 1000).toInt()
+                }
+
+                override fun onFinish() {
+                    timeRemaining.value = null
+                }
+
+            }.start()
+        }
+    }
+
+
     Column(Modifier.fillMaxSize()) {
         Box(
             contentAlignment = Alignment.Center,
@@ -243,40 +316,38 @@ fun App(
                 .padding(16.dp)
         ) {
             Column {
-                Text("Sleep timer")
-                when (timeRemaining != null) {
-                    true -> Text("Show time remaining")
-                    else -> {
-                       Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier
-                                .padding(horizontal = 10.dp)
-                                .padding(top = 10.dp)
-                        ) {
-                            Button(
-                                modifier = Modifier.weight(1f),
-                                onClick = { startSleepTimer(15) }) { Text("15 min") }
-                            Button(
-                                modifier = Modifier.weight(1f),
-                                onClick = { startSleepTimer(30) }) { Text("30 min") }
-                            Button(
-                                modifier = Modifier.weight(1f),
-                                onClick = { startSleepTimer(45) }) { Text("45 min") }
-                        }
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier
-                                .padding(horizontal = 10.dp)
-                                .padding(top = 10.dp)
-                        ) {
-                            Button(
-                                modifier = Modifier.weight(1f),
-                                onClick = { startSleepTimer(60) }) { Text("1 hour") }
-                            Button(
-                                modifier = Modifier.weight(1f),
-                                onClick = { startSleepTimer(120) }) { Text("2 hours") }
-                        }
-                    }
+                when (sleepTime != null) {
+                    true -> Text("Sleeping in ${timeRemaining.value}")
+                    else -> Text("Sleep timer")
+                }
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier
+                        .padding(horizontal = 10.dp)
+                        .padding(top = 10.dp)
+                ) {
+                    Button(
+                        modifier = Modifier.weight(1f),
+                        onClick = { startSleepTimer(15) }) { Text("15 min") }
+                    Button(
+                        modifier = Modifier.weight(1f),
+                        onClick = { startSleepTimer(30) }) { Text("30 min") }
+                    Button(
+                        modifier = Modifier.weight(1f),
+                        onClick = { startSleepTimer(45) }) { Text("45 min") }
+                }
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier
+                        .padding(horizontal = 10.dp)
+                        .padding(top = 10.dp)
+                ) {
+                    Button(
+                        modifier = Modifier.weight(1f),
+                        onClick = { startSleepTimer(60) }) { Text("1 hour") }
+                    Button(
+                        modifier = Modifier.weight(1f),
+                        onClick = { startSleepTimer(120) }) { Text("2 hours") }
                 }
             }
         }
@@ -287,6 +358,6 @@ fun App(
 @Composable
 fun AppPreview() {
     RoaringForkSleepSoundsTheme {
-        App({}, {}, isPlaying = false, timeRemaining = null, buttonEnabled = true)
+        App({}, {}, isPlaying = false, sleepTime = null, buttonEnabled = true)
     }
 }
