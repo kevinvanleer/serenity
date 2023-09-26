@@ -333,9 +333,13 @@ fun App(
                     true -> Text(
                         "Sleeping in ${
                             timeRemaining.value?.seconds?.coerceAtLeast(0)?.let {
-                                val minutesPart = it / 60
-                                val secondsPart = it - (minutesPart * 60)
-                                "${minutesPart}:${secondsPart}"
+                                val hoursPart = it / 3600
+                                val minutes = it / 60
+                                val minutesPart = minutes - (hoursPart * 60)
+                                val secondsPart = it - (minutes * 60)
+                                "${
+                                    hoursPart.takeIf { h -> h > 0 }?.let { "${hoursPart}:" }?:""
+                                }${minutesPart}:${secondsPart}"
                             }
                         }"
                     )
