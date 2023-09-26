@@ -3,7 +3,6 @@ package com.kvl.serenity
 import android.media.MediaPlayer
 import android.media.VolumeShaper
 import android.os.Bundle
-import android.os.CountDownTimer
 import android.os.PowerManager
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -11,7 +10,6 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -23,6 +21,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -43,6 +43,7 @@ import androidx.lifecycle.lifecycleScope
 import com.kvl.serenity.ui.theme.SerenityTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.time.Duration
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.Date
@@ -78,12 +79,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun createSleepTimer(sleepDelay: Int) {
-        if (::sleepTimer.isInitialized) try {
-            //sleepTimer.cancel()
-            //sleepTime.value = null
-        } catch (_: IllegalStateException) {
-        } else sleepTimer = Timer()
-
+        sleepTimer = Timer()
         sleepTime.value = Instant.now().plus(sleepDelay.toLong(), ChronoUnit.MINUTES)
         Log.d("SleepTimer", "Creating sleep timer at $sleepTime")
         //if (mediaPlayer.isPlaying) {
@@ -161,7 +157,14 @@ class MainActivity : ComponentActivity() {
                             }
                         },
                         startSleepTimer = { sleepTime: Int ->
-                            createSleepTimer(sleepTime)
+                            when (this.sleepTime.value != null) {
+                                true -> {
+                                    this.sleepTime.value = null
+                                    sleepTimer.cancel()
+                                }
+
+                                else -> createSleepTimer(sleepTime)
+                            }
                         }
                     )
                 }
@@ -249,7 +252,6 @@ fun PlayPauseButtonPreview(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun App(
     onClick: () -> Unit,
@@ -258,38 +260,20 @@ fun App(
     isPlaying: Boolean,
     buttonEnabled: Boolean
 ) {
-    val timeRemaining: MutableState<Int?> = remember { mutableStateOf(null) }
-    val countdownTimer: MutableState<CountDownTimer?> = remember { mutableStateOf(null) }
-
-    fun getTimeRemaining() = sleepTime?.minus(
-        Instant.now().toEpochMilli(),
-        ChronoUnit.MILLIS
-    )?.toEpochMilli()?.div(1000)?.toInt()
-
-    timeRemaining.value = getTimeRemaining()
-
-    when (sleepTime == null) {
-        true -> {
-            if (countdownTimer.value != null) {
-                countdownTimer.value!!.cancel()
-                countdownTimer.value = null
-            }
-        }
-
-        else -> {
-            countdownTimer.value = object : CountDownTimer(timeRemaining.value!! * 1000L, 500) {
-                override fun onTick(millisUntilFinished: Long) {
-                    timeRemaining.value = (millisUntilFinished / 1000).toInt()
-                }
-
-                override fun onFinish() {
-                    timeRemaining.value = null
-                }
-
-            }.start()
-        }
+    val timers = mapOf(
+        Pair("15-min", Duration.ofMinutes(15)),
+        Pair("30-min", Duration.ofMinutes(30)),
+        Pair("45-min", Duration.ofMinutes(45)),
+        Pair("1-hour", Duration.ofHours(1)),
+        Pair("2-hour", Duration.ofHours(2)),
+    )
+    val selectedTimer: MutableState<String?> = remember { mutableStateOf(null) }
+    val timeRemaining: MutableState<Duration?> = remember { mutableStateOf(null) }
+    timeRemaining.value = sleepTime?.let {
+        Duration.between(Instant.now(), sleepTime)
+            .apply { this.minus(this.nano.toLong(), ChronoUnit.NANOS) }
     }
-
+    if (timeRemaining.value == null) selectedTimer.value = null
 
     Column(Modifier.fillMaxSize()) {
         Box(
@@ -306,6 +290,11 @@ fun App(
                 .fillMaxWidth()
                 .weight(1f)
         ) {
+            CircularProgressIndicator(
+                progress = 0.5,
+                modifier = Modifier.matchParentSize(),
+                strokeWidth = 20.dp
+            )
             PlayPauseButton(enabled = buttonEnabled, onClick = onClick, isPlaying = isPlaying)
         }
         Box(
@@ -317,7 +306,15 @@ fun App(
         ) {
             Column {
                 when (sleepTime != null) {
-                    true -> Text("Sleeping in ${timeRemaining.value}")
+                    true -> Text(
+                        "Sleeping in ${
+                            when (timeRemaining.value!!.toMinutes() > 0) {
+                                true -> "${timeRemaining.value?.toMinutes()} minutes"
+                                else -> "${timeRemaining.value?.seconds?.coerceAtLeast(0)} seconds"
+                            }
+                        }"
+                    )
+
                     else -> Text("Sleep timer")
                 }
                 Row(
@@ -328,13 +325,26 @@ fun App(
                 ) {
                     Button(
                         modifier = Modifier.weight(1f),
-                        onClick = { startSleepTimer(15) }) { Text("15 min") }
+                        colors = when (selectedTimer.value == "15-min") {
+                            true -> ButtonDefaults.filledTonalButtonColors()
+                            else -> ButtonDefaults.buttonColors()
+                        },
+                        onClick = {
+                            selectedTimer.value = "15-min"
+                            startSleepTimer(15)
+                        }) { Text("15 min") }
                     Button(
                         modifier = Modifier.weight(1f),
-                        onClick = { startSleepTimer(30) }) { Text("30 min") }
+                        onClick = {
+                            selectedTimer.value = "30-min"
+                            startSleepTimer(30)
+                        }) { Text("30 min") }
                     Button(
                         modifier = Modifier.weight(1f),
-                        onClick = { startSleepTimer(45) }) { Text("45 min") }
+                        onClick = {
+                            selectedTimer.value = "45-min"
+                            startSleepTimer(45)
+                        }) { Text("45 min") }
                 }
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -344,10 +354,16 @@ fun App(
                 ) {
                     Button(
                         modifier = Modifier.weight(1f),
-                        onClick = { startSleepTimer(60) }) { Text("1 hour") }
+                        onClick = {
+                            selectedTimer.value = "1-hour"
+                            startSleepTimer(60)
+                        }) { Text("1 hour") }
                     Button(
                         modifier = Modifier.weight(1f),
-                        onClick = { startSleepTimer(120) }) { Text("2 hours") }
+                        onClick = {
+                            selectedTimer.value = "2-hour"
+                            startSleepTimer(120)
+                        }) { Text("2 hours") }
                 }
             }
         }
