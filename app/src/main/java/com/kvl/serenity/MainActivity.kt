@@ -3,6 +3,7 @@ package com.kvl.serenity
 import android.media.MediaPlayer
 import android.media.VolumeShaper
 import android.os.Bundle
+import android.os.CountDownTimer
 import android.os.PowerManager
 import android.text.format.DateUtils
 import android.util.Log
@@ -53,6 +54,31 @@ import java.util.TimerTask
 
 const val VOLUME_RAMP_TIME = 2000L
 
+/*
+class Fader(val mediaPlayer: MediaPlayer, val duration: Duration, val interval: Long) {
+    val volumeIncrement = interval.toFloat() / duration.toMillis()
+    val fader = object : CountDownTimer(duration.toMillis(), interval) {
+        override fun onTick(millisUntilFinished: Long) {
+            //currentVolume *= 0.999f
+            val currentVolume = millisUntilFinished.toFloat() / duration
+            Log.d("Fade out", "Decreasing volume: $currentVolume")
+            mediaPlayer.setVolume(currentVolume, currentVolume)
+        }
+
+        override fun onFinish() {
+            mediaPlayer.setVolume(1f, 1f)
+        }
+
+    }
+    val delayTimer = Timer().schedule(object : TimerTask() {
+        override fun run() {
+            fader.start()
+        }
+    }, Date.from(sleepTime.value!!.minus(5, ChronoUnit.MINUTES)))
+}
+
+ */
+
 class MainActivity : ComponentActivity() {
     private lateinit var mediaPlayer: MediaPlayer
     private lateinit var nextMediaPlayer: MediaPlayer
@@ -85,6 +111,30 @@ class MainActivity : ComponentActivity() {
         Log.d("SleepTimer", "Creating sleep timer at $sleepTime")
         //if (mediaPlayer.isPlaying) {
         scheduleSleepTimer()
+        var currentVolume = 1f
+        val duration = Duration.ofMinutes(5L).toMillis()
+        val interval = 100L
+        val volumeIncrement = interval.toFloat() / duration
+        val fader = object : CountDownTimer(duration, interval) {
+            override fun onTick(millisUntilFinished: Long) {
+                Log.d("Fade out", "Decreasing volume: $currentVolume")
+                //currentVolume *= 0.999f
+                //currentVolume -= volumeIncrement
+                currentVolume = millisUntilFinished.toFloat() / duration
+                mediaPlayer.setVolume(currentVolume, currentVolume)
+            }
+
+            override fun onFinish() {
+                Log.d("Fade out", "Fade out finished")
+                mediaPlayer.setVolume(1f, 1f)
+            }
+
+        }
+        Timer().schedule(object : TimerTask() {
+            override fun run() {
+                fader.start()
+            }
+        }, Date.from(sleepTime.value!!.minus(5, ChronoUnit.MINUTES)))
         //}
     }
 
@@ -132,15 +182,8 @@ class MainActivity : ComponentActivity() {
                     App(
                         buttonEnabled = enablePlayback.value,
                         isPlaying = isPlaying.value,
-                        /*timeRemaining = sleepTime.value?.let {
-                            it.minus(
-                                Instant.now().toEpochMilli(),
-                                ChronoUnit.MILLIS
-                            )
-                        }?.toEpochMilli()?.div(1000)?.toInt(),*/
                         sleepTime = sleepTime.value,
                         onClick = {
-                            isPlaying.value = !mediaPlayer.isPlaying
                             when (mediaPlayer.isPlaying) {
                                 true -> {
                                     enablePlayback.value = false
@@ -152,6 +195,14 @@ class MainActivity : ComponentActivity() {
                                 }
 
                                 else -> {
+                                    /* TODO
+                                      java.lang.IllegalStateException: player deallocated
+                                        at android.media.VolumeShaper.applyPlayer(VolumeShaper.java:177)
+                                        at android.media.VolumeShaper.apply(VolumeShaper.java:80)
+                                        at com.kvl.serenity.MainActivity$onCreate$1$1$1$1.invoke(MainActivity.kt:170)
+                                        at com.kvl.serenity.MainActivity$onCreate$1$1$1$1.invoke(MainActivity.kt:152)
+                                     */
+                                    isPlaying.value = true
                                     mediaPlayer.start()
                                     shaper.apply(VolumeShaper.Operation.PLAY)
                                 }
@@ -266,7 +317,7 @@ fun App(
     val timers = mapOf(
         Pair(
             "15-min", TimerDef(
-                duration = Duration.ofMinutes(15),
+                duration = Duration.ofMinutes(5),
                 label = "15 min"
             )
         ),
