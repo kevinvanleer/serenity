@@ -1,4 +1,4 @@
-package com.example.roaringforksleepsounds.ui.theme
+package com.kvl.serenity.ui.theme
 
 import androidx.compose.ui.graphics.Color
 

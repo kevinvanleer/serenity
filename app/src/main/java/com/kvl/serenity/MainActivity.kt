@@ -1,4 +1,4 @@
-package com.example.roaringforksleepsounds
+package com.kvl.serenity
 
 import android.media.MediaPlayer
 import android.media.VolumeShaper
@@ -40,7 +40,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.lifecycle.lifecycleScope
-import com.example.roaringforksleepsounds.ui.theme.RoaringForkSleepSoundsTheme
+import com.kvl.serenity.ui.theme.SerenityTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.Instant
@@ -126,7 +126,7 @@ class MainActivity : ComponentActivity() {
         createNextMediaPlayer()
 
         setContent {
-            RoaringForkSleepSoundsTheme {
+            SerenityTheme {
                 // A surface container using the 'background' color from the theme
                 Surface(
                     modifier = Modifier.fillMaxSize(),
@@ -230,7 +230,7 @@ fun PlayPauseButton(onClick: () -> Unit = {}, isPlaying: Boolean, enabled: Boole
 @Preview(showBackground = true)
 @Composable
 fun GreetingPreview() {
-    RoaringForkSleepSoundsTheme {
+    SerenityTheme {
         Greeting()
     }
 }
@@ -244,7 +244,7 @@ class BooleanParameterProvider : PreviewParameterProvider<Boolean> {
 fun PlayPauseButtonPreview(
     @PreviewParameter(BooleanParameterProvider::class) isPlaying: Boolean, enabled: Boolean = true
 ) {
-    RoaringForkSleepSoundsTheme {
+    SerenityTheme {
         PlayPauseButton(onClick = {}, isPlaying, enabled = enabled)
     }
 }
@@ -357,7 +357,7 @@ fun App(
 @Preview(showBackground = true)
 @Composable
 fun AppPreview() {
-    RoaringForkSleepSoundsTheme {
+    SerenityTheme {
         App({}, {}, isPlaying = false, sleepTime = null, buttonEnabled = true)
     }
 }

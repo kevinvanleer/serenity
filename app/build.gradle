@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace 'com.example.roaringforksleepsounds'
+    namespace 'com.kvl.serenity'
     compileSdk 33
 
     defaultConfig {
-        applicationId "com.example.roaringforksleepsounds"
+        applicationId "com.kvl.serenity"
         minSdk 28
         targetSdk 33
         versionCode 1
