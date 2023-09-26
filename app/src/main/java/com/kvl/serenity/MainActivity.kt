@@ -261,28 +261,40 @@ fun App(
     buttonEnabled: Boolean
 ) {
     data class ButtonDef(val duration: Duration, val label: String)
+
     val timers = mapOf(
-        Pair("15-min", ButtonDef(
-            duration = Duration.ofMinutes(15),
-            label = "15 minutes"
-        )),
-        Pair("30-min", ButtonDef (
-            duration = Duration.ofMinutes(30),
-            label = "30 minutes"
-        )),
-        Pair("45-min", ButtonDef (
-            duration = Duration.ofMinutes(45),
-            label = "45 minutes"
-        )),
-        Pair("1-hour", ButtonDef (
-            duration = Duration.ofHours(1),
-            label = "1 hour"
-        )),
-        Pair("2-hour", ButtonDef (
-            duration = Duration.ofHours(2),
-            label = "2 hours"
-        )),
+        Pair(
+            "15-min", ButtonDef(
+                duration = Duration.ofMinutes(15),
+                label = "15 min"
+            )
+        ),
+        Pair(
+            "30-min", ButtonDef(
+                duration = Duration.ofMinutes(30),
+                label = "30 min"
+            )
+        ),
+        Pair(
+            "45-min", ButtonDef(
+                duration = Duration.ofMinutes(45),
+                label = "45 min"
+            )
+        ),
+        Pair(
+            "1-hour", ButtonDef(
+                duration = Duration.ofHours(1),
+                label = "1 hour"
+            )
+        ),
+        Pair(
+            "2-hour", ButtonDef(
+                duration = Duration.ofHours(2),
+                label = "2 hours"
+            )
+        ),
     )
+
     val selectedTimer: MutableState<String?> = remember { mutableStateOf(null) }
     val timeRemaining: MutableState<Duration?> = remember { mutableStateOf(null) }
     val fractionRemaining = remember { mutableStateOf(0f) }
@@ -297,6 +309,19 @@ fun App(
     if (timeRemaining.value == null) selectedTimer.value = null
 
     Column(Modifier.fillMaxSize()) {
+        @Composable
+        fun getTimerButton(key: String, def: ButtonDef) =
+            Button(
+                modifier = Modifier.weight(1f),
+                colors = when (selectedTimer.value == key) {
+                    true -> ButtonDefaults.filledTonalButtonColors()
+                    else -> ButtonDefaults.buttonColors()
+                },
+                onClick = {
+                    selectedTimer.value = key
+                    startSleepTimer(def.duration.toMinutes().toInt())
+                }) { Text(def.label) }
+
         Box(
             contentAlignment = Alignment.Center,
             modifier = Modifier
@@ -352,28 +377,8 @@ fun App(
                         .padding(horizontal = 10.dp)
                         .padding(top = 10.dp)
                 ) {
-                    Button(
-                        modifier = Modifier.weight(1f),
-                        colors = when (selectedTimer.value == "15-min") {
-                            true -> ButtonDefaults.filledTonalButtonColors()
-                            else -> ButtonDefaults.buttonColors()
-                        },
-                        onClick = {
-                            selectedTimer.value = "15-min"
-                            startSleepTimer(15)
-                        }) { Text("15 min") }
-                    Button(
-                        modifier = Modifier.weight(1f),
-                        onClick = {
-                            selectedTimer.value = "30-min"
-                            startSleepTimer(30)
-                        }) { Text("30 min") }
-                    Button(
-                        modifier = Modifier.weight(1f),
-                        onClick = {
-                            selectedTimer.value = "45-min"
-                            startSleepTimer(45)
-                        }) { Text("45 min") }
+                    timers.toList().slice(IntRange(0, 2))
+                        .map { getTimerButton(key = it.first, def = it.second) }
                 }
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -381,18 +386,8 @@ fun App(
                         .padding(horizontal = 10.dp)
                         .padding(top = 10.dp)
                 ) {
-                    Button(
-                        modifier = Modifier.weight(1f),
-                        onClick = {
-                            selectedTimer.value = "1-hour"
-                            startSleepTimer(60)
-                        }) { Text("1 hour") }
-                    Button(
-                        modifier = Modifier.weight(1f),
-                        onClick = {
-                            selectedTimer.value = "2-hour"
-                            startSleepTimer(120)
-                        }) { Text("2 hours") }
+                    timers.toList().slice(IntRange(3, 4))
+                        .map { getTimerButton(key = it.first, def = it.second) }
                 }
             }
         }
