@@ -4,6 +4,7 @@ import android.media.MediaPlayer
 import android.media.VolumeShaper
 import android.os.Bundle
 import android.os.PowerManager
+import android.text.format.DateUtils
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -260,35 +261,35 @@ fun App(
     isPlaying: Boolean,
     buttonEnabled: Boolean
 ) {
-    data class ButtonDef(val duration: Duration, val label: String)
+    data class TimerDef(val duration: Duration, val label: String)
 
     val timers = mapOf(
         Pair(
-            "15-min", ButtonDef(
+            "15-min", TimerDef(
                 duration = Duration.ofMinutes(15),
                 label = "15 min"
             )
         ),
         Pair(
-            "30-min", ButtonDef(
+            "30-min", TimerDef(
                 duration = Duration.ofMinutes(30),
                 label = "30 min"
             )
         ),
         Pair(
-            "45-min", ButtonDef(
+            "45-min", TimerDef(
                 duration = Duration.ofMinutes(45),
                 label = "45 min"
             )
         ),
         Pair(
-            "1-hour", ButtonDef(
+            "1-hour", TimerDef(
                 duration = Duration.ofHours(1),
                 label = "1 hour"
             )
         ),
         Pair(
-            "2-hour", ButtonDef(
+            "2-hour", TimerDef(
                 duration = Duration.ofHours(2),
                 label = "2 hours"
             )
@@ -310,7 +311,7 @@ fun App(
 
     Column(Modifier.fillMaxSize()) {
         @Composable
-        fun getTimerButton(key: String, def: ButtonDef) =
+        fun getTimerButton(key: String, def: TimerDef) =
             Button(
                 modifier = Modifier.weight(1f),
                 colors = when (selectedTimer.value == key) {
@@ -357,15 +358,7 @@ fun App(
                 when (sleepTime != null) {
                     true -> Text(
                         "Sleeping in ${
-                            timeRemaining.value?.seconds?.coerceAtLeast(0)?.let {
-                                val hoursPart = it / 3600
-                                val minutes = it / 60
-                                val minutesPart = minutes - (hoursPart * 60)
-                                val secondsPart = it - (minutes * 60)
-                                "${
-                                    hoursPart.takeIf { h -> h > 0 }?.let { "${hoursPart}:" }?:""
-                                }${minutesPart}:${secondsPart}"
-                            }
+                            DateUtils.formatElapsedTime(timeRemaining.value?.seconds ?: 0)
                         }"
                     )
 
