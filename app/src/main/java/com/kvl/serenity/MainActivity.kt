@@ -157,14 +157,14 @@ class MainActivity : ComponentActivity() {
         mediaPlayer = MediaPlayer.create(applicationContext, waveFile)
         mediaPlayer.setWakeMode(applicationContext, PowerManager.PARTIAL_WAKE_LOCK)
         val shaperConfig = VolumeShaper.Configuration.Builder()
-                .setDuration(VOLUME_RAMP_TIME)
-                .setCurve(
-                    floatArrayOf(0f, 1f), floatArrayOf(0f, 1f)
-                )
-                .setInterpolatorType(VolumeShaper.Configuration.INTERPOLATOR_TYPE_LINEAR)
-                .build()
+            .setDuration(VOLUME_RAMP_TIME)
+            .setCurve(
+                floatArrayOf(0f, 1f), floatArrayOf(0f, 1f)
+            )
+            .setInterpolatorType(VolumeShaper.Configuration.INTERPOLATOR_TYPE_LINEAR)
+            .build()
         var shaper = mediaPlayer.createVolumeShaper(
-          shaperConfig
+            shaperConfig
         )
         /*mediaPlayer.setOnPreparedListener {
             it.start()
@@ -188,8 +188,8 @@ class MainActivity : ComponentActivity() {
                                     enablePlayback.value = false
                                     try {
                                         shaper.apply(VolumeShaper.Operation.REVERSE)
-                                    } catch (e:java.lang.IllegalStateException) {
-                                        Log.e("onClick", "Could not apply volume shaper",e)
+                                    } catch (e: java.lang.IllegalStateException) {
+                                        Log.e("onClick", "Could not apply volume shaper", e)
                                         shaper = mediaPlayer.createVolumeShaper(shaperConfig)
                                         shaper.apply(VolumeShaper.Operation.REVERSE)
                                     }
@@ -205,8 +205,8 @@ class MainActivity : ComponentActivity() {
                                     mediaPlayer.start()
                                     try {
                                         shaper.apply(VolumeShaper.Operation.PLAY)
-                                    } catch (e:java.lang.IllegalStateException) {
-                                        Log.e("onClick", "Could not apply volume shaper",e)
+                                    } catch (e: java.lang.IllegalStateException) {
+                                        Log.e("onClick", "Could not apply volume shaper", e)
                                         shaper = mediaPlayer.createVolumeShaper(shaperConfig)
                                         shaper.apply(VolumeShaper.Operation.REVERSE)
                                     }
@@ -371,7 +371,7 @@ fun App(
             Button(
                 modifier = Modifier.weight(1f),
                 colors = when (selectedTimer.value == key) {
-                    true -> ButtonDefaults.filledTonalButtonColors()
+                    true ->ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
                     else -> ButtonDefaults.buttonColors()
                 },
                 onClick = {

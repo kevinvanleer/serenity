@@ -16,15 +16,20 @@ import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
 private val DarkColorScheme = darkColorScheme(
-    primary = Purple80,
-    secondary = PurpleGrey80,
-    tertiary = Pink80
+    primary = Serenity60,
+    secondary = Serenity40,
+    tertiary = Serenity20,
+    onPrimary = SerenityWhite,
 )
 
 private val LightColorScheme = lightColorScheme(
-    primary = Purple40,
-    secondary = PurpleGrey40,
-    tertiary = Pink40
+    primary = Serenity80,
+    secondary = Serenity60,
+    tertiary = Serenity40,
+    onPrimary = SerenityWhite,
+    onSecondary = SerenityWhite,
+    surface = SerenityWhite,
+    background = SerenityWhite
 
     /* Other default colors to override
     background = Color(0xFFFFFBFE),
@@ -57,8 +62,8 @@ fun SerenityTheme(
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            window.statusBarColor = colorScheme.primary.toArgb()
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = darkTheme
+            window.statusBarColor = colorScheme.background.toArgb()
+            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
         }
     }
 
