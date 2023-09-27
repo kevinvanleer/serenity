@@ -7,4 +7,13 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    <color name="serenity_800">#ff0a5081</color>
+    <color name="serenity_700">#ff0c5889</color>
+    <color name="serenity_600">#ff177ba9</color>
+    <color name="serenity_500">#ff3796bb</color>
+    <color name="serenity_400">#ff57cae7</color>
+    <color name="serenity_300">#ff63d4ed</color>
+    <color name="serenity_200">#ff83e7f6</color>
+    <color name="serenity_100">#ffe5e5e6</color>
+
 </resources>
