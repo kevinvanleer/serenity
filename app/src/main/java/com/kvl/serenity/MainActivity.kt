@@ -35,6 +35,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewParameter
 import androidx.compose.ui.tooling.preview.PreviewParameterProvider
@@ -42,7 +43,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.lifecycle.lifecycleScope
+import com.kvl.serenity.ui.theme.Serenity60
+import com.kvl.serenity.ui.theme.Serenity80
 import com.kvl.serenity.ui.theme.SerenityTheme
+import com.kvl.serenity.ui.theme.mooli
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.Duration
@@ -246,16 +250,23 @@ fun Greeting() {
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
-            text = "Serenity",
-            fontSize = 10.em
+            text = "serenity",
+            fontFamily = mooli,
+            fontSize = 10.em,
+            color = when(MaterialTheme.colorScheme.primary) {
+                Serenity60 -> Color.DarkGray
+                else -> Color.LightGray
+            }
         )
         Spacer(modifier = Modifier.height(24.dp))
         Text(
             text = "Roaring Fork",
+            fontFamily = mooli,
             fontSize = 6.em
         )
         Text(
             text = "The Great Smoky Mountains",
+            fontFamily = mooli,
             fontSize = 4.em
         )
     }
@@ -371,7 +382,7 @@ fun App(
             Button(
                 modifier = Modifier.weight(1f),
                 colors = when (selectedTimer.value == key) {
-                    true ->ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                    true -> ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
                     else -> ButtonDefaults.buttonColors()
                 },
                 onClick = {

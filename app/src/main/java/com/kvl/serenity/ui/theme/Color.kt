@@ -19,3 +19,4 @@ val Serenity30 = Color(0xff63d4ed)
 val Serenity20 = Color(0xff83E7F6)
 val Serenity10 = Color(0xffe5e5e6)
 val SerenityWhite = Serenity10
+val SerenityBlack = Color(0xff0a1124)

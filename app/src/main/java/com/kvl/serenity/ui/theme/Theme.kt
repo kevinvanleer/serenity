@@ -13,13 +13,18 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
 import androidx.core.view.WindowCompat
+import com.kvl.serenity.R
 
 private val DarkColorScheme = darkColorScheme(
     primary = Serenity60,
     secondary = Serenity40,
     tertiary = Serenity20,
     onPrimary = SerenityWhite,
+    onSurface = SerenityWhite,
+    onBackground = SerenityWhite,
 )
 
 private val LightColorScheme = lightColorScheme(
@@ -29,8 +34,10 @@ private val LightColorScheme = lightColorScheme(
     onPrimary = SerenityWhite,
     onSecondary = SerenityWhite,
     surface = SerenityWhite,
-    background = SerenityWhite
+    background = SerenityWhite,
 
+    onSurface = SerenityBlack,
+    onBackground = SerenityBlack
     /* Other default colors to override
     background = Color(0xFFFFFBFE),
     surface = Color(0xFFFFFBFE),
@@ -40,6 +47,10 @@ private val LightColorScheme = lightColorScheme(
     onBackground = Color(0xFF1C1B1F),
     onSurface = Color(0xFF1C1B1F),
     */
+)
+
+val mooli = FontFamily(
+    Font(resId = R.font.mooli_regular)
 )
 
 @Composable
