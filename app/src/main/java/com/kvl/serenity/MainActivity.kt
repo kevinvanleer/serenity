@@ -52,43 +52,75 @@ import java.util.Date
 import java.util.Timer
 import java.util.TimerTask
 
-const val VOLUME_RAMP_TIME = 2000L
+const val VOLUME_RAMP_TIME = 750L
 
-/*
-class Fader(val mediaPlayer: MediaPlayer, val duration: Duration, val interval: Long) {
-    val volumeIncrement = interval.toFloat() / duration.toMillis()
-    val fader = object : CountDownTimer(duration.toMillis(), interval) {
-        override fun onTick(millisUntilFinished: Long) {
-            //currentVolume *= 0.999f
-            val currentVolume = millisUntilFinished.toFloat() / duration
-            Log.d("Fade out", "Decreasing volume: $currentVolume")
-            mediaPlayer.setVolume(currentVolume, currentVolume)
-        }
-
-        override fun onFinish() {
-            mediaPlayer.setVolume(1f, 1f)
-        }
-
-    }
-    val delayTimer = Timer().schedule(object : TimerTask() {
-        override fun run() {
-            fader.start()
-        }
-    }, Date.from(sleepTime.value!!.minus(5, ChronoUnit.MINUTES)))
-}
-
- */
 
 class MainActivity : ComponentActivity() {
     private lateinit var mediaPlayer: MediaPlayer
     private lateinit var nextMediaPlayer: MediaPlayer
-    private lateinit var sleepTimer: Timer
+    private var sleepTimer: Fader? = null
     private var sleepTime: MutableState<Instant?> = mutableStateOf(null)
 
     private val isPlaying = mutableStateOf(false)
     private val enablePlayback = mutableStateOf(true)
 
     private val waveFile: Int = R.raw.roaring_fork_long_wav
+
+    fun pausePlayback() {
+        Log.d("MediaPlayer", "Pausing playback")
+        mediaPlayer.pause()
+        isPlaying.value = false
+        enablePlayback.value = true
+        sleepTime.value = null
+    }
+
+    inner class Fader(val duration: Duration, val interval: Long, val delay: Instant) {
+        var currentVolume = 1f
+        val fader = object : CountDownTimer(duration.toMillis(), interval) {
+            override fun onTick(millisUntilFinished: Long) {
+                try {
+                    currentVolume = millisUntilFinished.toFloat() / duration.toMillis()
+                    Log.d("Fade out", "Decreasing volume: $currentVolume")
+                    mediaPlayer.setVolume(currentVolume, currentVolume)
+                } catch (_: IllegalStateException) {
+                    Log.d("Fade out", "Something went wrong with media player")
+                }
+            }
+
+            override fun onFinish() {
+                Log.d("Fade out", "Fade out finished")
+                pausePlayback()
+                mediaPlayer.setVolume(1f, 1f)
+            }
+
+        }
+        private lateinit var delayTimer: Timer
+        fun start() {
+            Log.d("Fader", "Starting fader")
+            delayTimer = Timer()
+            delayTimer.schedule(object : TimerTask() {
+                override fun run() {
+                    fader.start()
+                }
+            }, Date.from(delay))
+        }
+
+        fun cancel() {
+            Log.d("Fader", "Canceling fader")
+            fader.cancel()
+            delayTimer.cancel()
+            mediaPlayer.createVolumeShaper(
+                VolumeShaper.Configuration.Builder()
+                    .setDuration(VOLUME_RAMP_TIME)
+                    .setCurve(
+                        floatArrayOf(0f, 1f), floatArrayOf(currentVolume, 1f)
+                    )
+                    .setInterpolatorType(VolumeShaper.Configuration.INTERPOLATOR_TYPE_LINEAR)
+                    .build()
+            ).apply(VolumeShaper.Operation.PLAY)
+            mediaPlayer.setVolume(1f, 1f)
+        }
+    }
 
     private fun createNextMediaPlayer() {
         nextMediaPlayer = MediaPlayer.create(applicationContext, waveFile)
@@ -97,75 +129,42 @@ class MainActivity : ComponentActivity() {
         mediaPlayer.setNextMediaPlayer(nextMediaPlayer)
         mediaPlayer.setOnCompletionListener {
             Log.d("MediaPlayer", "Playback complete")
-            mediaPlayer.stop()
-            mediaPlayer.reset()
-            mediaPlayer.release()
+            val oldMediaPlayer = mediaPlayer
             mediaPlayer = nextMediaPlayer
+            oldMediaPlayer.stop()
+            oldMediaPlayer.reset()
+            oldMediaPlayer.release()
             createNextMediaPlayer()
         }
     }
 
     private fun createSleepTimer(sleepDelay: Int) {
-        sleepTimer = Timer()
         sleepTime.value = Instant.now().plus(sleepDelay.toLong(), ChronoUnit.MINUTES)
+        sleepTimer = Fader(
+            duration = Duration.ofMinutes(5L),
+            interval = 100L,
+            delay = sleepTime.value!!.minus(5, ChronoUnit.MINUTES)
+        )
         Log.d("SleepTimer", "Creating sleep timer at $sleepTime")
         //if (mediaPlayer.isPlaying) {
-        scheduleSleepTimer()
-        var currentVolume = 1f
-        val duration = Duration.ofMinutes(5L).toMillis()
-        val interval = 100L
-        val volumeIncrement = interval.toFloat() / duration
-        val fader = object : CountDownTimer(duration, interval) {
-            override fun onTick(millisUntilFinished: Long) {
-                Log.d("Fade out", "Decreasing volume: $currentVolume")
-                //currentVolume *= 0.999f
-                //currentVolume -= volumeIncrement
-                currentVolume = millisUntilFinished.toFloat() / duration
-                mediaPlayer.setVolume(currentVolume, currentVolume)
-            }
-
-            override fun onFinish() {
-                Log.d("Fade out", "Fade out finished")
-                mediaPlayer.setVolume(1f, 1f)
-            }
-
-        }
-        Timer().schedule(object : TimerTask() {
-            override fun run() {
-                fader.start()
-            }
-        }, Date.from(sleepTime.value!!.minus(5, ChronoUnit.MINUTES)))
+        //scheduleSleepTimer()
+        sleepTimer?.start()
         //}
-    }
-
-    private fun scheduleSleepTimer() {
-        sleepTimer.schedule(object : TimerTask() {
-            override fun run() {
-                Log.d("SleepTimer", "Executing sleep timer")
-                pausePlayback()
-            }
-        }, Date.from(sleepTime.value))
-    }
-
-    private fun pausePlayback() {
-        mediaPlayer.pause()
-        isPlaying.value = false
-        enablePlayback.value = true
-        sleepTime.value = null
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         mediaPlayer = MediaPlayer.create(applicationContext, waveFile)
         mediaPlayer.setWakeMode(applicationContext, PowerManager.PARTIAL_WAKE_LOCK)
-        val shaper = mediaPlayer.createVolumeShaper(
-            VolumeShaper.Configuration.Builder()
+        val shaperConfig = VolumeShaper.Configuration.Builder()
                 .setDuration(VOLUME_RAMP_TIME)
                 .setCurve(
                     floatArrayOf(0f, 1f), floatArrayOf(0f, 1f)
                 )
                 .setInterpolatorType(VolumeShaper.Configuration.INTERPOLATOR_TYPE_LINEAR)
                 .build()
+        var shaper = mediaPlayer.createVolumeShaper(
+          shaperConfig
         )
         /*mediaPlayer.setOnPreparedListener {
             it.start()
@@ -187,24 +186,30 @@ class MainActivity : ComponentActivity() {
                             when (mediaPlayer.isPlaying) {
                                 true -> {
                                     enablePlayback.value = false
-                                    shaper.apply(VolumeShaper.Operation.REVERSE)
+                                    try {
+                                        shaper.apply(VolumeShaper.Operation.REVERSE)
+                                    } catch (e:java.lang.IllegalStateException) {
+                                        Log.e("onClick", "Could not apply volume shaper",e)
+                                        shaper = mediaPlayer.createVolumeShaper(shaperConfig)
+                                        shaper.apply(VolumeShaper.Operation.REVERSE)
+                                    }
                                     lifecycleScope.launch {
                                         delay(VOLUME_RAMP_TIME)
+                                        sleepTimer?.cancel()
                                         pausePlayback()
                                     }
                                 }
 
                                 else -> {
-                                    /* TODO
-                                      java.lang.IllegalStateException: player deallocated
-                                        at android.media.VolumeShaper.applyPlayer(VolumeShaper.java:177)
-                                        at android.media.VolumeShaper.apply(VolumeShaper.java:80)
-                                        at com.kvl.serenity.MainActivity$onCreate$1$1$1$1.invoke(MainActivity.kt:170)
-                                        at com.kvl.serenity.MainActivity$onCreate$1$1$1$1.invoke(MainActivity.kt:152)
-                                     */
                                     isPlaying.value = true
                                     mediaPlayer.start()
-                                    shaper.apply(VolumeShaper.Operation.PLAY)
+                                    try {
+                                        shaper.apply(VolumeShaper.Operation.PLAY)
+                                    } catch (e:java.lang.IllegalStateException) {
+                                        Log.e("onClick", "Could not apply volume shaper",e)
+                                        shaper = mediaPlayer.createVolumeShaper(shaperConfig)
+                                        shaper.apply(VolumeShaper.Operation.REVERSE)
+                                    }
                                 }
                             }
                         },
@@ -212,7 +217,7 @@ class MainActivity : ComponentActivity() {
                             when (this.sleepTime.value != null) {
                                 true -> {
                                     this.sleepTime.value = null
-                                    sleepTimer.cancel()
+                                    sleepTimer?.cancel()
                                 }
 
                                 else -> createSleepTimer(sleepTime)
@@ -317,7 +322,7 @@ fun App(
     val timers = mapOf(
         Pair(
             "15-min", TimerDef(
-                duration = Duration.ofMinutes(5),
+                duration = Duration.ofMinutes(15),
                 label = "15 min"
             )
         ),
