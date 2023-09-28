@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "260540423076",
+    "project_id": "serenity-d2a20",
+    "storage_bucket": "serenity-d2a20.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:260540423076:android:2b27368d374f010fadff31",
+        "android_client_info": {
+          "package_name": "com.kvl.serenity"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD1dwb-xYqc4Z0dhfb7-IfY4PZ9UU8CwOM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
