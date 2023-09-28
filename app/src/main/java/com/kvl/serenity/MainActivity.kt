@@ -43,8 +43,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.lifecycle.lifecycleScope
+import com.google.firebase.analytics.FirebaseAnalytics
+import com.google.firebase.crashlytics.FirebaseCrashlytics
 import com.kvl.serenity.ui.theme.Serenity60
-import com.kvl.serenity.ui.theme.Serenity80
 import com.kvl.serenity.ui.theme.SerenityTheme
 import com.kvl.serenity.ui.theme.mooli
 import kotlinx.coroutines.delay
@@ -60,6 +61,7 @@ const val VOLUME_RAMP_TIME = 750L
 
 
 class MainActivity : ComponentActivity() {
+    private lateinit var firebaseAnalytics: FirebaseAnalytics
     private lateinit var mediaPlayer: MediaPlayer
     private lateinit var nextMediaPlayer: MediaPlayer
     private var sleepTimer: Fader? = null
@@ -156,8 +158,23 @@ class MainActivity : ComponentActivity() {
         //}
     }
 
+    private fun recordVolumeShaperError(e: java.lang.IllegalStateException) {
+        Log.e("onClick", "Could not apply volume shaper", e)
+        FirebaseCrashlytics.getInstance().recordException(e)
+        FirebaseCrashlytics.getInstance().log("Could not apply volume shaper")
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        firebaseAnalytics = FirebaseAnalytics.getInstance(this)
+        FirebaseCrashlytics.getInstance()
+        //NOT SURE THESE ACTUALLY DISABLE LOGGING TO SERVER
+        firebaseAnalytics.setAnalyticsCollectionEnabled(!BuildConfig.DEBUG)
+        FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(!BuildConfig.DEBUG)
+        firebaseAnalytics.logEvent(FirebaseAnalytics.Event.SCREEN_VIEW, Bundle().apply {
+            putString(FirebaseAnalytics.Param.SCREEN_NAME, "MainActivity")
+            putString(FirebaseAnalytics.Param.SCREEN_CLASS, "MainActivity")
+        })
         mediaPlayer = MediaPlayer.create(applicationContext, waveFile)
         mediaPlayer.setWakeMode(applicationContext, PowerManager.PARTIAL_WAKE_LOCK)
         val shaperConfig = VolumeShaper.Configuration.Builder()
@@ -170,14 +187,10 @@ class MainActivity : ComponentActivity() {
         var shaper = mediaPlayer.createVolumeShaper(
             shaperConfig
         )
-        /*mediaPlayer.setOnPreparedListener {
-            it.start()
-        }*/
         createNextMediaPlayer()
 
         setContent {
             SerenityTheme {
-                // A surface container using the 'background' color from the theme
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
@@ -189,11 +202,12 @@ class MainActivity : ComponentActivity() {
                         onClick = {
                             when (mediaPlayer.isPlaying) {
                                 true -> {
+                                    firebaseAnalytics.logEvent("pause_playback", null)
                                     enablePlayback.value = false
                                     try {
                                         shaper.apply(VolumeShaper.Operation.REVERSE)
                                     } catch (e: java.lang.IllegalStateException) {
-                                        Log.e("onClick", "Could not apply volume shaper", e)
+                                        recordVolumeShaperError(e)
                                         shaper = mediaPlayer.createVolumeShaper(shaperConfig)
                                         shaper.apply(VolumeShaper.Operation.REVERSE)
                                     }
@@ -205,14 +219,15 @@ class MainActivity : ComponentActivity() {
                                 }
 
                                 else -> {
+                                    firebaseAnalytics.logEvent("start_playback", null)
                                     isPlaying.value = true
                                     mediaPlayer.start()
                                     try {
                                         shaper.apply(VolumeShaper.Operation.PLAY)
                                     } catch (e: java.lang.IllegalStateException) {
-                                        Log.e("onClick", "Could not apply volume shaper", e)
+                                        recordVolumeShaperError(e)
                                         shaper = mediaPlayer.createVolumeShaper(shaperConfig)
-                                        shaper.apply(VolumeShaper.Operation.REVERSE)
+                                        shaper.apply(VolumeShaper.Operation.PLAY)
                                     }
                                 }
                             }
@@ -220,11 +235,18 @@ class MainActivity : ComponentActivity() {
                         startSleepTimer = { sleepTime: Int ->
                             when (this.sleepTime.value != null) {
                                 true -> {
+                                    firebaseAnalytics.logEvent("cancel_sleep_timer", null)
                                     this.sleepTime.value = null
                                     sleepTimer?.cancel()
                                 }
 
-                                else -> createSleepTimer(sleepTime)
+                                else -> {
+
+                                    firebaseAnalytics.logEvent("start_sleep_timer", Bundle().apply {
+                                        putInt("duration", sleepTime)
+                                    })
+                                    createSleepTimer(sleepTime)
+                                }
                             }
                         }
                     )
@@ -235,6 +257,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        if(BuildConfig.DEBUG) {
+            FirebaseCrashlytics.getInstance().deleteUnsentReports()
+        }
         mediaPlayer.stop()
         nextMediaPlayer.stop()
         mediaPlayer.release()
@@ -253,7 +278,7 @@ fun Greeting() {
             text = "serenity",
             fontFamily = mooli,
             fontSize = 10.em,
-            color = when(MaterialTheme.colorScheme.primary) {
+            color = when (MaterialTheme.colorScheme.primary) {
                 Serenity60 -> Color.DarkGray
                 else -> Color.LightGray
             }
