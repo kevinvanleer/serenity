@@ -23,7 +23,7 @@ import java.time.temporal.ChronoUnit
 @Composable
 fun App(
     onClick: () -> Unit,
-    startSleepTimer: (time: Int) -> Unit,
+    startSleepTimer: (time: Int?) -> Unit,
     sleepTime: Instant? = null,
     isPlaying: Boolean,
     buttonEnabled: Boolean

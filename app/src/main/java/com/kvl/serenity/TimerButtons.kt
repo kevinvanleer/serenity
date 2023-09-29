@@ -21,7 +21,7 @@ fun TimerButtons(
     timeRemaining: Duration?,
     sleepTime: Instant?,
     selectedTimer: String?,
-    onClickTimer: (String, Int) -> Unit
+    onClickTimer: (String?, Int?) -> Unit
 ) {
     Column {
         @Composable
@@ -37,10 +37,13 @@ fun TimerButtons(
                     else -> ButtonDefaults.buttonColors()
                 },
                 onClick = {
-                    onClickTimer(
-                        key,
-                        def.duration.toMinutes().toInt()
-                    )
+                    when (selectedTimer) {
+                        key -> onClickTimer(null, null)
+                        else -> onClickTimer(
+                            key,
+                            def.duration.toMinutes().toInt()
+                        )
+                    }
                 })
             {
                 Text(

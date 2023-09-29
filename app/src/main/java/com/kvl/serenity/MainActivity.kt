@@ -146,9 +146,11 @@ class MainActivity : ComponentActivity() {
         firebaseAnalytics.logEvent("cancel_sleep_timer", null)
         this.sleepTime.value = null
         sleepTimer?.cancel()
+        sleepTimer = null
     }
 
     private fun onStartSleepTimer(sleepTime: Int) {
+        onCancelSleepTimer()
         firebaseAnalytics.logEvent("start_sleep_timer", Bundle().apply {
             putInt("duration", sleepTime)
         })
@@ -225,8 +227,8 @@ class MainActivity : ComponentActivity() {
                                 else -> onStartPlayback()
                             }
                         },
-                        startSleepTimer = { sleepTime: Int ->
-                            when (this.sleepTime.value != null) {
+                        startSleepTimer = { sleepTime: Int? ->
+                            when (sleepTime == null) {
                                 true -> onCancelSleepTimer()
                                 else -> onStartSleepTimer(sleepTime)
                             }

@@ -13,8 +13,8 @@ android {
         applicationId "com.kvl.serenity"
         minSdk 28
         targetSdk 33
-        versionCode 3
-        versionName "Fix themes"
+        versionCode 4
+        versionName "Improved audio looping"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
