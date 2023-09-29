@@ -1,11 +1,13 @@
 package com.kvl.serenity
 
+import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
 import android.media.VolumeShaper
 import android.os.Bundle
 import android.os.CountDownTimer
+import android.os.PowerManager
 import android.text.format.DateUtils
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -49,6 +51,7 @@ import com.google.firebase.crashlytics.FirebaseCrashlytics
 import com.kvl.serenity.ui.theme.Serenity60
 import com.kvl.serenity.ui.theme.SerenityTheme
 import com.kvl.serenity.ui.theme.mooli
+import com.kvl.serenity.util.isPlaying
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.Duration
@@ -70,18 +73,18 @@ class MainActivity : ComponentActivity() {
     private val isPlaying = mutableStateOf(false)
     private val enablePlayback = mutableStateOf(true)
 
-    private val waveFile: Int = R.raw.roaring_fork_long_wav
+    private lateinit var waveFile: WaveFile
+    private lateinit var wakeLock: PowerManager.WakeLock
 
     fun pausePlayback() {
         Log.d("MediaPlayer", "Pausing playback")
+        wakeLock.release()
         mediaPlayer.pause()
         isPlaying.value = false
         enablePlayback.value = true
         sleepTime.value = null
     }
 
-    val AudioTrack.isPlaying: Boolean
-        get() = playState == AudioTrack.PLAYSTATE_PLAYING
 
     inner class Fader(val duration: Duration, val interval: Long, val delay: Instant) {
         var currentVolume = 1f
@@ -153,6 +156,13 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        wakeLock =
+            (getSystemService(Context.POWER_SERVICE) as PowerManager).run {
+                newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "MyApp::MyWakelockTag")
+            }
+        waveFile = WaveFile(resources.openRawResource(R.raw.roaring_fork_long_wav))
+
         firebaseAnalytics = FirebaseAnalytics.getInstance(this)
         FirebaseCrashlytics.getInstance()
         //NOT SURE THESE ACTUALLY DISABLE LOGGING TO SERVER
@@ -162,7 +172,6 @@ class MainActivity : ComponentActivity() {
             putString(FirebaseAnalytics.Param.SCREEN_NAME, "MainActivity")
             putString(FirebaseAnalytics.Param.SCREEN_CLASS, "MainActivity")
         })
-        val roaringForkWav = WaveFile(resources.openRawResource(R.raw.roaring_fork_long_wav))
 
         mediaPlayer = AudioTrack.Builder()
             .setAudioAttributes(
@@ -174,21 +183,20 @@ class MainActivity : ComponentActivity() {
             .setAudioFormat(
                 AudioFormat.Builder()
                     .setEncoding(AudioFormat.ENCODING_PCM_FLOAT)
-                    .setSampleRate(roaringForkWav.sampleRate)
+                    .setSampleRate(waveFile.sampleRate)
                     .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
                     .build()
             )
             .setTransferMode(AudioTrack.MODE_STATIC)
-            .setBufferSizeInBytes(roaringForkWav.dataSize)
+            .setBufferSizeInBytes(waveFile.dataSize)
             .build()
 
         mediaPlayer.setLoopPoints(0, mediaPlayer.bufferSizeInFrames, -1)
         mediaPlayer.write(
-            roaringForkWav.audioBuffer,
-            roaringForkWav.audioBuffer.remaining(),
+            waveFile.audioBuffer,
+            waveFile.audioBuffer.remaining(),
             AudioTrack.WRITE_BLOCKING
         )
-        //.mediaPlayer.setWakeMode(applicationContext, PowerManager.PARTIAL_WAKE_LOCK)
         val shaperConfig = VolumeShaper.Configuration.Builder()
             .setDuration(VOLUME_RAMP_TIME)
             .setCurve(
@@ -230,6 +238,7 @@ class MainActivity : ComponentActivity() {
                                 }
 
                                 else -> {
+                                    wakeLock.acquire(Duration.ofHours(10).toMillis())
                                     firebaseAnalytics.logEvent("start_playback", null)
                                     isPlaying.value = true
                                     mediaPlayer.play()
@@ -252,7 +261,6 @@ class MainActivity : ComponentActivity() {
                                 }
 
                                 else -> {
-
                                     firebaseAnalytics.logEvent("start_sleep_timer", Bundle().apply {
                                         putInt("duration", sleepTime)
                                     })
@@ -367,7 +375,7 @@ fun App(
     val timers = mapOf(
         Pair(
             "15-min", TimerDef(
-                duration = Duration.ofMinutes(15),
+                duration = Duration.ofMinutes(5),
                 label = "15 min"
             )
         ),
