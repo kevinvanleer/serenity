@@ -13,8 +13,8 @@ android {
         applicationId "com.kvl.serenity"
         minSdk 28
         targetSdk 33
-        versionCode 4
-        versionName "Improved audio looping"
+        versionCode 5
+        versionName "Play asset delivery"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -53,6 +53,8 @@ android {
             excludes += '/META-INF/{AL2.0,LGPL2.1}'
         }
     }
+
+    assetPacks = [":sounds"]
 }
 
 dependencies {

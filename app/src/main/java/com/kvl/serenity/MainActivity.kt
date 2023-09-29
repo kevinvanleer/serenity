@@ -1,6 +1,7 @@
 package com.kvl.serenity
 
 import android.content.Context
+import android.content.res.AssetManager
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
@@ -160,11 +161,15 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        val assetContext: Context = createPackageContext("com.kvl.serenity", 0)
+        val assetManager: AssetManager = assetContext.assets
         wakeLock =
             (getSystemService(Context.POWER_SERVICE) as PowerManager).run {
                 newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Serenity::PlaybackWakeLock")
             }
-        waveFile = WaveFile(resources.openRawResource(R.raw.roaring_fork_long_wav))
+        waveFile = WaveFile(
+            assetManager.open("roaring-fork-long.wav", AssetManager.ACCESS_BUFFER)
+        )
 
         firebaseAnalytics = FirebaseAnalytics.getInstance(this)
         FirebaseCrashlytics.getInstance()
