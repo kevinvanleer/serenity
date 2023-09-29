@@ -33,10 +33,10 @@ import java.util.TimerTask
 
 const val VOLUME_RAMP_TIME = 2000L
 
-
 class MainActivity : ComponentActivity() {
     private lateinit var firebaseAnalytics: FirebaseAnalytics
-    private lateinit var mediaPlayer: AudioTrack
+    private lateinit var waveTrack: AudioTrack
+    private lateinit var shaper: VolumeShaper
     private var sleepTimer: Fader? = null
     private var sleepTime: MutableState<Instant?> = mutableStateOf(null)
 
@@ -49,7 +49,7 @@ class MainActivity : ComponentActivity() {
     fun pausePlayback() {
         Log.d("MediaPlayer", "Pausing playback")
         wakeLock.release()
-        mediaPlayer.pause()
+        waveTrack.pause()
         isPlaying.value = false
         enablePlayback.value = true
         sleepTime.value = null
@@ -62,7 +62,7 @@ class MainActivity : ComponentActivity() {
                 try {
                     currentVolume = millisUntilFinished.toFloat() / duration.toMillis()
                     Log.d("Fade out", "Decreasing volume: $currentVolume")
-                    mediaPlayer.setVolume(currentVolume)
+                    waveTrack.setVolume(currentVolume)
                 } catch (_: IllegalStateException) {
                     Log.d("Fade out", "Something went wrong with media player")
                 }
@@ -71,7 +71,7 @@ class MainActivity : ComponentActivity() {
             override fun onFinish() {
                 Log.d("Fade out", "Fade out finished")
                 pausePlayback()
-                mediaPlayer.setVolume(1f)
+                waveTrack.setVolume(1f)
             }
 
         }
@@ -90,7 +90,7 @@ class MainActivity : ComponentActivity() {
             Log.d("Fader", "Canceling fader")
             fader.cancel()
             delayTimer.cancel()
-            mediaPlayer.createVolumeShaper(
+            waveTrack.createVolumeShaper(
                 VolumeShaper.Configuration.Builder()
                     .setDuration(VOLUME_RAMP_TIME)
                     .setCurve(
@@ -99,7 +99,7 @@ class MainActivity : ComponentActivity() {
                     .setInterpolatorType(VolumeShaper.Configuration.INTERPOLATOR_TYPE_LINEAR)
                     .build()
             ).apply(VolumeShaper.Operation.PLAY)
-            mediaPlayer.setVolume(1f)
+            waveTrack.setVolume(1f)
         }
     }
 
@@ -123,15 +123,15 @@ class MainActivity : ComponentActivity() {
         FirebaseCrashlytics.getInstance().log("Could not apply volume shaper")
     }
 
-    private fun onStartPlayback(shaper: VolumeShaper) {
+    private fun onStartPlayback() {
         wakeLock.acquire(Duration.ofHours(10).toMillis())
         firebaseAnalytics.logEvent("start_playback", null)
         isPlaying.value = true
-        mediaPlayer.play()
+        waveTrack.play()
         shaper.apply(VolumeShaper.Operation.PLAY)
     }
 
-    private fun onPausePlayback(shaper: VolumeShaper) {
+    private fun onPausePlayback() {
         firebaseAnalytics.logEvent("pause_playback", null)
         enablePlayback.value = false
         shaper.apply(VolumeShaper.Operation.REVERSE)
@@ -140,6 +140,19 @@ class MainActivity : ComponentActivity() {
             sleepTimer?.cancel()
             pausePlayback()
         }
+    }
+
+    private fun onCancelSleepTimer() {
+        firebaseAnalytics.logEvent("cancel_sleep_timer", null)
+        this.sleepTime.value = null
+        sleepTimer?.cancel()
+    }
+
+    private fun onStartSleepTimer(sleepTime: Int) {
+        firebaseAnalytics.logEvent("start_sleep_timer", Bundle().apply {
+            putInt("duration", sleepTime)
+        })
+        createSleepTimer(sleepTime)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -161,7 +174,7 @@ class MainActivity : ComponentActivity() {
             putString(FirebaseAnalytics.Param.SCREEN_CLASS, "MainActivity")
         })
 
-        mediaPlayer = AudioTrack.Builder()
+        waveTrack = AudioTrack.Builder()
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_MEDIA)
@@ -179,14 +192,14 @@ class MainActivity : ComponentActivity() {
             .setBufferSizeInBytes(waveFile.dataSize)
             .build()
 
-        mediaPlayer.setLoopPoints(0, mediaPlayer.bufferSizeInFrames, -1)
-        mediaPlayer.write(
+        waveTrack.setLoopPoints(0, waveTrack.bufferSizeInFrames, -1)
+        waveTrack.write(
             waveFile.audioBuffer,
             waveFile.audioBuffer.remaining(),
             AudioTrack.WRITE_BLOCKING
         )
 
-        val shaper = mediaPlayer.createVolumeShaper(
+        shaper = waveTrack.createVolumeShaper(
             VolumeShaper.Configuration.Builder()
                 .setDuration(VOLUME_RAMP_TIME)
                 .setCurve(
@@ -207,30 +220,15 @@ class MainActivity : ComponentActivity() {
                         isPlaying = isPlaying.value,
                         sleepTime = sleepTime.value,
                         onClick = {
-                            when (mediaPlayer.isPlaying) {
-                                true -> {
-                                    onPausePlayback(shaper)
-                                }
-
-                                else -> {
-                                    onStartPlayback(shaper)
-                                }
+                            when (waveTrack.isPlaying) {
+                                true -> onPausePlayback()
+                                else -> onStartPlayback()
                             }
                         },
                         startSleepTimer = { sleepTime: Int ->
                             when (this.sleepTime.value != null) {
-                                true -> {
-                                    firebaseAnalytics.logEvent("cancel_sleep_timer", null)
-                                    this.sleepTime.value = null
-                                    sleepTimer?.cancel()
-                                }
-
-                                else -> {
-                                    firebaseAnalytics.logEvent("start_sleep_timer", Bundle().apply {
-                                        putInt("duration", sleepTime)
-                                    })
-                                    createSleepTimer(sleepTime)
-                                }
+                                true -> onCancelSleepTimer()
+                                else -> onStartSleepTimer(sleepTime)
                             }
                         }
                     )
@@ -245,7 +243,7 @@ class MainActivity : ComponentActivity() {
             FirebaseCrashlytics.getInstance().deleteUnsentReports()
         }
         wakeLock.release()
-        mediaPlayer.stop()
-        mediaPlayer.release()
+        waveTrack.stop()
+        waveTrack.release()
     }
 }
