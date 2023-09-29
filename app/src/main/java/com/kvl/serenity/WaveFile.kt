@@ -16,6 +16,8 @@ class WaveFile(private val inputStream: InputStream) {
 
     init {
         val fourByteArray = ByteArray(4)
+        val twoByteArray = ByteArray(2)
+
         inputStream.read(fourByteArray)
         Log.d("WAVE", fourByteArray.decodeToString())
         if (fourByteArray.decodeToString() != "RIFF") throw RuntimeException("INVALID RIFF HEADER: ${fourByteArray.decodeToString()}")
@@ -40,13 +42,13 @@ class WaveFile(private val inputStream: InputStream) {
         inputStream.read(formatCode)
         Log.d("WAVE", "${formatCode.toShort()}")
 
-        inputStream.read(fourByteArray)
-        channelCount = fourByteArray.toInt()
-        Log.d("WAVE", "${channelCount.toShort()}")
+        inputStream.read(twoByteArray)
+        channelCount = twoByteArray.toShort().toInt()
+        Log.d("WAVE", "$channelCount")
 
         inputStream.read(fourByteArray)
         sampleRate = fourByteArray.toInt()
-        Log.d("WAVE", "${sampleRate.toInt()}")
+        Log.d("WAVE", "$sampleRate")
 
         val bytesPerSecond = ByteArray(4)
         inputStream.read(bytesPerSecond)
@@ -56,7 +58,6 @@ class WaveFile(private val inputStream: InputStream) {
         inputStream.read(blockAlign)
         Log.d("WAVE", "${blockAlign.toShort()}")
 
-        val twoByteArray = ByteArray(2)
         inputStream.read(twoByteArray)
         sampleSize = twoByteArray.toShort().toInt()
         Log.d("WAVE", "${sampleSize.toShort()}")
@@ -102,15 +103,14 @@ class WaveFile(private val inputStream: InputStream) {
 
         inputStream.read(fourByteArray)
         dataSize = fourByteArray.toInt()
-        Log.d("WAVE", "${dataSize}")
+        Log.d("WAVE", "$dataSize")
 
-        //Log.d("WAVE", "Skipping ${skip(44)} bytes")
         audioBuffer = ByteArray(dataSize).let {
             inputStream.read(it)
             ByteBuffer.wrap(it)
         }
 
-        //if (audioBuffer.remaining() != dataSize.toInt()) throw RuntimeException("DATA SIZE DOES NOT MATCH BUFFER SIZE: ${audioBuffer.remaining()} != ${dataSize.toInt()}")
+        if (audioBuffer.remaining() != dataSize) throw RuntimeException("DATA SIZE DOES NOT MATCH BUFFER SIZE: ${audioBuffer.remaining()} != $dataSize")
 
         inputStream.close()
     }
