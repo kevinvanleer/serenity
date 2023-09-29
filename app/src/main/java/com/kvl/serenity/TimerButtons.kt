@@ -42,7 +42,14 @@ fun TimerButtons(
                         def.duration.toMinutes().toInt()
                     )
                 })
-            { Text(def.label) }
+            {
+                Text(
+                    when (selectedTimer == key) {
+                        true -> "Cancel"
+                        else -> def.label
+                    }
+                )
+            }
 
         when (sleepTime != null) {
             true -> Text(
