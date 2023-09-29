@@ -1,10 +1,11 @@
 package com.kvl.serenity
 
-import android.media.MediaPlayer
+import android.media.AudioAttributes
+import android.media.AudioFormat
+import android.media.AudioTrack
 import android.media.VolumeShaper
 import android.os.Bundle
 import android.os.CountDownTimer
-import android.os.PowerManager
 import android.text.format.DateUtils
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -48,8 +49,11 @@ import com.google.firebase.crashlytics.FirebaseCrashlytics
 import com.kvl.serenity.ui.theme.Serenity60
 import com.kvl.serenity.ui.theme.SerenityTheme
 import com.kvl.serenity.ui.theme.mooli
+import com.kvl.serenity.util.toInt
+import com.kvl.serenity.util.toShort
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.nio.ByteBuffer
 import java.time.Duration
 import java.time.Instant
 import java.time.temporal.ChronoUnit
@@ -57,13 +61,13 @@ import java.util.Date
 import java.util.Timer
 import java.util.TimerTask
 
-const val VOLUME_RAMP_TIME = 750L
+const val VOLUME_RAMP_TIME = 2000L
 
 
 class MainActivity : ComponentActivity() {
     private lateinit var firebaseAnalytics: FirebaseAnalytics
-    private lateinit var mediaPlayer: MediaPlayer
-    private lateinit var nextMediaPlayer: MediaPlayer
+    private lateinit var mediaPlayer: AudioTrack
+    private lateinit var audioBuffer: ByteBuffer
     private var sleepTimer: Fader? = null
     private var sleepTime: MutableState<Instant?> = mutableStateOf(null)
 
@@ -80,6 +84,9 @@ class MainActivity : ComponentActivity() {
         sleepTime.value = null
     }
 
+    val AudioTrack.isPlaying: Boolean
+        get() = playState == AudioTrack.PLAYSTATE_PLAYING
+
     inner class Fader(val duration: Duration, val interval: Long, val delay: Instant) {
         var currentVolume = 1f
         val fader = object : CountDownTimer(duration.toMillis(), interval) {
@@ -87,7 +94,7 @@ class MainActivity : ComponentActivity() {
                 try {
                     currentVolume = millisUntilFinished.toFloat() / duration.toMillis()
                     Log.d("Fade out", "Decreasing volume: $currentVolume")
-                    mediaPlayer.setVolume(currentVolume, currentVolume)
+                    mediaPlayer.setVolume(currentVolume)
                 } catch (_: IllegalStateException) {
                     Log.d("Fade out", "Something went wrong with media player")
                 }
@@ -96,7 +103,7 @@ class MainActivity : ComponentActivity() {
             override fun onFinish() {
                 Log.d("Fade out", "Fade out finished")
                 pausePlayback()
-                mediaPlayer.setVolume(1f, 1f)
+                mediaPlayer.setVolume(1f)
             }
 
         }
@@ -124,23 +131,7 @@ class MainActivity : ComponentActivity() {
                     .setInterpolatorType(VolumeShaper.Configuration.INTERPOLATOR_TYPE_LINEAR)
                     .build()
             ).apply(VolumeShaper.Operation.PLAY)
-            mediaPlayer.setVolume(1f, 1f)
-        }
-    }
-
-    private fun createNextMediaPlayer() {
-        nextMediaPlayer = MediaPlayer.create(applicationContext, waveFile)
-        nextMediaPlayer.setWakeMode(applicationContext, PowerManager.PARTIAL_WAKE_LOCK)
-
-        mediaPlayer.setNextMediaPlayer(nextMediaPlayer)
-        mediaPlayer.setOnCompletionListener {
-            Log.d("MediaPlayer", "Playback complete")
-            val oldMediaPlayer = mediaPlayer
-            mediaPlayer = nextMediaPlayer
-            oldMediaPlayer.stop()
-            oldMediaPlayer.reset()
-            oldMediaPlayer.release()
-            createNextMediaPlayer()
+            mediaPlayer.setVolume(1f)
         }
     }
 
@@ -175,8 +166,128 @@ class MainActivity : ComponentActivity() {
             putString(FirebaseAnalytics.Param.SCREEN_NAME, "MainActivity")
             putString(FirebaseAnalytics.Param.SCREEN_CLASS, "MainActivity")
         })
-        mediaPlayer = MediaPlayer.create(applicationContext, waveFile)
-        mediaPlayer.setWakeMode(applicationContext, PowerManager.PARTIAL_WAKE_LOCK)
+        val dataSize = ByteArray(4)
+        resources.openRawResource(R.raw.roaring_fork_long_wav).apply {
+
+            val riff = ByteArray(4)
+            read(riff)
+            Log.d("WAVE", riff.decodeToString())
+            if (riff.decodeToString() != "RIFF") throw RuntimeException("INVALID RIFF HEADER: ${riff.decodeToString()}")
+            val fileSize = ByteArray(4)
+            read(fileSize)
+            Log.d("WAVE", "${fileSize.toInt()}")
+            val wave = ByteArray(4)
+            read(wave)
+            Log.d("WAVE", wave.decodeToString())
+            if (wave.decodeToString() != "WAVE") throw RuntimeException("INVALID WAVE HEADER: ${wave.decodeToString()}")
+
+            val fmt = ByteArray(4)
+            read(fmt)
+            Log.d("WAVE", fmt.decodeToString())
+            if (fmt.decodeToString() != "fmt ") throw RuntimeException("INVALID FMT HEADER: ${fmt.decodeToString()}")
+
+            val chunkSize = ByteArray(4)
+            read(chunkSize)
+            Log.d("WAVE", "${chunkSize.toInt()}")
+
+            val formatCode = ByteArray(2)
+            read(formatCode)
+            Log.d("WAVE", "${formatCode.toShort()}")
+
+            val channelCount = ByteArray(2)
+            read(channelCount)
+            Log.d("WAVE", "${channelCount.toShort()}")
+
+            val sampleRate = ByteArray(4)
+            read(sampleRate)
+            Log.d("WAVE", "${sampleRate.toInt()}")
+
+            val bytesPerSecond = ByteArray(4)
+            read(bytesPerSecond)
+            Log.d("WAVE", "${bytesPerSecond.toInt()}")
+
+            val blockAlign = ByteArray(2)
+            read(blockAlign)
+            Log.d("WAVE", "${blockAlign.toShort()}")
+
+            val bitsPerSample = ByteArray(2)
+            read(bitsPerSample)
+            Log.d("WAVE", "${bitsPerSample.toShort()}")
+
+            val factChunk = ByteArray(4)
+            read(factChunk)
+            Log.d("WAVE", factChunk.decodeToString())
+            if (factChunk.decodeToString() != "fact") throw RuntimeException("INVALID FACT CHUNK HEADER: ${factChunk.decodeToString()}")
+
+            val factChunkSize = ByteArray(4)
+            read(factChunkSize)
+            Log.d("WAVE", "${factChunkSize.toInt()}")
+
+            val factChunkSampleLength = ByteArray(4)
+            read(factChunkSampleLength)
+            Log.d("WAVE", "${factChunkSampleLength.toInt()}")
+
+            val peakChunk = ByteArray(4)
+            read(peakChunk)
+            Log.d("WAVE", peakChunk.decodeToString())
+            if (peakChunk.decodeToString() != "PEAK") throw RuntimeException("INVALID PEAK CHUNK HEADER: ${peakChunk.decodeToString()}")
+
+            val peakChunkSize = ByteArray(4)
+            read(peakChunkSize)
+            Log.d("WAVE", "${peakChunkSize.toInt()}")
+
+            val peakChunkVersion = ByteArray(4)
+            read(peakChunkVersion)
+            Log.d("WAVE", "${peakChunkVersion.toInt()}")
+
+            val peakChunkTimestamp = ByteArray(4)
+            read(peakChunkTimestamp)
+            Log.d("WAVE", "${peakChunkTimestamp.toInt()}")
+
+            val peakData = ByteArray(peakChunkSize.toInt() - 8)
+            read(peakData)
+            Log.d("WAVE", "$peakData")
+
+            val dataChunk = ByteArray(4)
+            read(dataChunk)
+            Log.d("WAVE", dataChunk.decodeToString())
+            if (dataChunk.decodeToString() != "data") throw RuntimeException("INVALID DATA CHUNK HEADER: ${dataChunk.decodeToString()}")
+
+            read(dataSize)
+            Log.d("WAVE", "${dataSize.toInt()}")
+
+            //Log.d("WAVE", "Skipping ${skip(44)} bytes")
+            audioBuffer = ByteBuffer.wrap(readBytes())
+
+            //if (audioBuffer.remaining() != dataSize.toInt()) throw RuntimeException("DATA SIZE DOES NOT MATCH BUFFER SIZE: ${audioBuffer.remaining()} != ${dataSize.toInt()}")
+
+            close()
+        }
+
+        Log.d("WAVE", "File size from os: 38081236")
+        Log.d("WAVE", "Audio buffer size: ${audioBuffer.remaining()}")
+
+        mediaPlayer = AudioTrack.Builder()
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .build()
+            )
+            .setAudioFormat(
+                AudioFormat.Builder()
+                    .setEncoding(AudioFormat.ENCODING_PCM_FLOAT)
+                    .setSampleRate(48000)
+                    .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
+                    .build()
+            )
+            .setTransferMode(AudioTrack.MODE_STATIC)
+            .setBufferSizeInBytes(/*audioBuffer.remaining()*/dataSize.toInt())
+            .build()
+
+        mediaPlayer.setLoopPoints(0, mediaPlayer.bufferSizeInFrames, -1)
+        mediaPlayer.write(audioBuffer, audioBuffer.remaining(), AudioTrack.WRITE_BLOCKING)
+        //.mediaPlayer.setWakeMode(applicationContext, PowerManager.PARTIAL_WAKE_LOCK)
         val shaperConfig = VolumeShaper.Configuration.Builder()
             .setDuration(VOLUME_RAMP_TIME)
             .setCurve(
@@ -187,7 +298,6 @@ class MainActivity : ComponentActivity() {
         var shaper = mediaPlayer.createVolumeShaper(
             shaperConfig
         )
-        createNextMediaPlayer()
 
         setContent {
             SerenityTheme {
@@ -221,7 +331,7 @@ class MainActivity : ComponentActivity() {
                                 else -> {
                                     firebaseAnalytics.logEvent("start_playback", null)
                                     isPlaying.value = true
-                                    mediaPlayer.start()
+                                    mediaPlayer.play()
                                     try {
                                         shaper.apply(VolumeShaper.Operation.PLAY)
                                     } catch (e: java.lang.IllegalStateException) {
@@ -257,13 +367,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        if(BuildConfig.DEBUG) {
+        if (BuildConfig.DEBUG) {
             FirebaseCrashlytics.getInstance().deleteUnsentReports()
         }
         mediaPlayer.stop()
-        nextMediaPlayer.stop()
         mediaPlayer.release()
-        nextMediaPlayer.release()
     }
 }
 
