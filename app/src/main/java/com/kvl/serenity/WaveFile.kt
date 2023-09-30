@@ -12,6 +12,7 @@ class WaveFile(private val inputStream: InputStream) {
     val sampleRate: Int
     val channelCount: Int
     val sampleSize: Int
+    val formatCode: Int
     val audioBuffer: ByteBuffer
 
     init {
@@ -38,9 +39,9 @@ class WaveFile(private val inputStream: InputStream) {
         inputStream.read(chunkSize)
         Log.d("WAVE", "${chunkSize.toInt()}")
 
-        val formatCode = ByteArray(2)
-        inputStream.read(formatCode)
-        Log.d("WAVE", "${formatCode.toShort()}")
+        inputStream.read(twoByteArray)
+        formatCode = twoByteArray.toShort().toInt()
+        Log.d("WAVE", "${formatCode}")
 
         inputStream.read(twoByteArray)
         channelCount = twoByteArray.toShort().toInt()

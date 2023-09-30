@@ -190,9 +190,26 @@ class MainActivity : ComponentActivity() {
             )
             .setAudioFormat(
                 AudioFormat.Builder()
-                    .setEncoding(AudioFormat.ENCODING_PCM_FLOAT)
+                    .setEncoding(
+                        when (waveFile.formatCode) {
+                            3 -> AudioFormat.ENCODING_PCM_FLOAT
+                            1 -> when (waveFile.sampleSize) {
+                                16 -> AudioFormat.ENCODING_PCM_16BIT
+                                8 -> AudioFormat.ENCODING_PCM_8BIT
+                                else -> AudioFormat.ENCODING_DEFAULT
+                            }
+
+                            else -> AudioFormat.ENCODING_DEFAULT
+                        }
+                    )
                     .setSampleRate(waveFile.sampleRate)
-                    .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
+                    .setChannelMask(
+                        when (waveFile.channelCount) {
+                            2 -> AudioFormat.CHANNEL_OUT_STEREO
+                            1 -> AudioFormat.CHANNEL_OUT_MONO
+                            else -> AudioFormat.CHANNEL_OUT_DEFAULT
+                        }
+                    )
                     .build()
             )
             .setTransferMode(AudioTrack.MODE_STATIC)
