@@ -1,16 +1,24 @@
 package com.kvl.serenity
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
@@ -20,10 +28,14 @@ import java.time.Duration
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun App(
+    sounds: List<SoundDef>,
+    selectedSoundIndex: Int,
+    onSetSelectedSound: (Int) -> Unit,
     onClick: () -> Unit,
-    startSleepTimer: (time: Int?) -> Unit,
+    startSleepTimer: (Int?) -> Unit,
     sleepTime: Instant? = null,
     isPlaying: Boolean,
     buttonEnabled: Boolean
@@ -64,6 +76,13 @@ fun App(
     val selectedTimer: MutableState<String?> = remember { mutableStateOf(null) }
     val timeRemaining: MutableState<Duration?> = remember { mutableStateOf(null) }
     val fractionRemaining = remember { mutableStateOf(0f) }
+    val pagerState = rememberPagerState(selectedSoundIndex)
+
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.currentPage }.collect { page ->
+            onSetSelectedSound(page)
+        }
+    }
 
     timeRemaining.value = sleepTime?.let {
         Duration.between(Instant.now(), sleepTime)
@@ -81,7 +100,24 @@ fun App(
                 .weight(1f)
                 .fillMaxWidth()
         ) {
-            Greeting()
+            Column(
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Greeting()
+                Spacer(modifier = Modifier.height(24.dp))
+                HorizontalPager(
+                    pageCount = sounds.size,
+                    state = pagerState
+                ) { pageIdx ->
+                    SoundInfo(
+                        name = sounds[pageIdx].name,
+                        location = sounds[pageIdx].location
+                    )
+                }
+                Spacer(modifier = Modifier.height(24.dp))
+                Dots(sounds.size, selectedSoundIndex)
+            }
         }
         Box(
             contentAlignment = Alignment.Center,
@@ -123,6 +159,6 @@ fun App(
 @Composable
 fun AppPreview() {
     SerenityTheme {
-        App({}, {}, isPlaying = false, sleepTime = null, buttonEnabled = true)
+        App(emptyList(), 0, {}, {}, {}, isPlaying = false, sleepTime = null, buttonEnabled = true)
     }
 }

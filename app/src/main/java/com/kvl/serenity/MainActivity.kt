@@ -18,12 +18,17 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
 import androidx.lifecycle.lifecycleScope
 import com.google.firebase.analytics.FirebaseAnalytics
 import com.google.firebase.crashlytics.FirebaseCrashlytics
 import com.kvl.serenity.ui.theme.SerenityTheme
 import com.kvl.serenity.util.isPlaying
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import java.time.Duration
 import java.time.Instant
@@ -34,7 +39,11 @@ import java.util.TimerTask
 
 const val VOLUME_RAMP_TIME = 2000L
 
+val Context.dataStore by preferencesDataStore(name = "state")
+val CURRENT_SOUND_SELECTION_KEY = intPreferencesKey("current_sound_selection")
+
 class MainActivity : ComponentActivity() {
+    private lateinit var assetManager: AssetManager
     private lateinit var firebaseAnalytics: FirebaseAnalytics
     private lateinit var waveTrack: AudioTrack
     private lateinit var shaper: VolumeShaper
@@ -44,8 +53,34 @@ class MainActivity : ComponentActivity() {
     private val isPlaying = mutableStateOf(false)
     private val enablePlayback = mutableStateOf(true)
 
-    private lateinit var waveFile: WaveFile
     private lateinit var wakeLock: PowerManager.WakeLock
+
+
+    private val selectedSoundIndex = mutableStateOf(0)
+
+
+    private val sounds = listOf(
+        SoundDef(
+            name = "Roaring Fork",
+            location = "The Great Smoky Mountains",
+            filename = "roaring-fork-long.wav"
+        ),
+        SoundDef(
+            name = "Evening in Fall",
+            location = "Rural Missouri",
+            filename = "beaufort-mo-fall-evening.wav"
+        ),
+        SoundDef(
+            name = "Morning in Fall",
+            location = "Rural Missouri",
+            filename = "krakow-mo-fall-morning.wav"
+        ),
+        SoundDef(
+            name = "Rocky Beach",
+            location = "Hawaii",
+            filename = "hawaii-rocky-beach.wav"
+        )
+    )
 
     fun pausePlayback() {
         Log.d("MediaPlayer", "Pausing playback")
@@ -158,28 +193,28 @@ class MainActivity : ComponentActivity() {
         createSleepTimer(sleepTime)
     }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    private fun onSetSelectedSound(selected: Int) {
+        selectedSoundIndex.value = selected
+        val wasPlaying = isPlaying.value
+        isPlaying.value = false
 
-        val assetContext: Context = createPackageContext("com.kvl.serenity", 0)
-        val assetManager: AssetManager = assetContext.assets
-        wakeLock =
-            (getSystemService(Context.POWER_SERVICE) as PowerManager).run {
-                newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Serenity::PlaybackWakeLock")
+        lifecycleScope.launch(Dispatchers.IO) {
+            Log.d("PREFS", "Setting selected sound to $selected")
+            getWaveTrack("sounds/${sounds[selectedSoundIndex.value].filename}")
+            dataStore.edit { settings ->
+                settings[CURRENT_SOUND_SELECTION_KEY] = selectedSoundIndex.value
             }
-        waveFile = WaveFile(
-            assetManager.open("roaring-fork-long.wav", AssetManager.ACCESS_BUFFER)
+        }.invokeOnCompletion { if (wasPlaying) onStartPlayback() }
+    }
+
+    private fun getWaveTrack(filePathString: String) {
+        Log.d("SND", "Loading $filePathString")
+
+        val waveFile = WaveFile(
+            assetManager.open(filePathString, AssetManager.ACCESS_BUFFER)
         )
 
-        firebaseAnalytics = FirebaseAnalytics.getInstance(this)
-        FirebaseCrashlytics.getInstance()
-        //NOT SURE THESE ACTUALLY DISABLE LOGGING TO SERVER
-        firebaseAnalytics.setAnalyticsCollectionEnabled(!BuildConfig.DEBUG)
-        FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(!BuildConfig.DEBUG)
-        firebaseAnalytics.logEvent(FirebaseAnalytics.Event.SCREEN_VIEW, Bundle().apply {
-            putString(FirebaseAnalytics.Param.SCREEN_NAME, "MainActivity")
-            putString(FirebaseAnalytics.Param.SCREEN_CLASS, "MainActivity")
-        })
+        if (::waveTrack.isInitialized) waveTrack.release()
 
         waveTrack = AudioTrack.Builder()
             .setAudioAttributes(
@@ -233,32 +268,66 @@ class MainActivity : ComponentActivity() {
                 .build()
         )
 
-        setContent {
-            SerenityTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
-                ) {
-                    App(
-                        buttonEnabled = enablePlayback.value,
-                        isPlaying = isPlaying.value,
-                        sleepTime = sleepTime.value,
-                        onClick = {
-                            when (waveTrack.isPlaying) {
-                                true -> onPausePlayback()
-                                else -> onStartPlayback()
-                            }
-                        },
-                        startSleepTimer = { sleepTime: Int? ->
-                            when (sleepTime == null) {
-                                true -> onCancelSleepTimer()
-                                else -> onStartSleepTimer(sleepTime)
-                            }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        lifecycleScope.launch {
+            dataStore.data.map { prefs ->
+                prefs[CURRENT_SOUND_SELECTION_KEY]
+            }.collect {
+                Log.d("PREFS", "Current sound selection: $it")
+                selectedSoundIndex.value = it ?: 0
+
+                setContent {
+                    SerenityTheme {
+                        Surface(
+                            modifier = Modifier.fillMaxSize(),
+                            color = MaterialTheme.colorScheme.background
+                        ) {
+                            App(
+                                sounds = sounds,
+                                selectedSoundIndex = selectedSoundIndex.value,
+                                onSetSelectedSound = { idx: Int -> onSetSelectedSound(idx) },
+                                buttonEnabled = enablePlayback.value,
+                                isPlaying = isPlaying.value,
+                                sleepTime = sleepTime.value,
+                                onClick = {
+                                    when (waveTrack.isPlaying) {
+                                        true -> onPausePlayback()
+                                        else -> onStartPlayback()
+                                    }
+                                },
+                                startSleepTimer = { sleepTime: Int? ->
+                                    when (sleepTime == null) {
+                                        true -> onCancelSleepTimer()
+                                        else -> onStartSleepTimer(sleepTime)
+                                    }
+                                }
+                            )
                         }
-                    )
+                    }
                 }
             }
         }
+
+        assetManager = createPackageContext("com.kvl.serenity", 0).assets
+
+        wakeLock =
+            (getSystemService(Context.POWER_SERVICE) as PowerManager).run {
+                newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Serenity::PlaybackWakeLock")
+            }
+
+        firebaseAnalytics = FirebaseAnalytics.getInstance(this)
+        FirebaseCrashlytics.getInstance()
+        //NOT SURE THESE ACTUALLY DISABLE LOGGING TO SERVER
+        firebaseAnalytics.setAnalyticsCollectionEnabled(!BuildConfig.DEBUG)
+        FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(!BuildConfig.DEBUG)
+        firebaseAnalytics.logEvent(FirebaseAnalytics.Event.SCREEN_VIEW, Bundle().apply {
+            putString(FirebaseAnalytics.Param.SCREEN_NAME, "MainActivity")
+            putString(FirebaseAnalytics.Param.SCREEN_CLASS, "MainActivity")
+        })
     }
 
     override fun onDestroy() {
