@@ -84,7 +84,7 @@ class MainActivity : ComponentActivity() {
 
     fun pausePlayback() {
         Log.d("MediaPlayer", "Pausing playback")
-        wakeLock.release()
+        if (wakeLock.isHeld) wakeLock.release()
         waveTrack.pause()
         isPlaying.value = false
         enablePlayback.value = true
@@ -160,7 +160,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun onStartPlayback() {
-        wakeLock.acquire(Duration.ofHours(10).toMillis())
+        if (!wakeLock.isHeld) wakeLock.acquire(Duration.ofHours(10).toMillis())
         firebaseAnalytics.logEvent("start_playback", null)
         isPlaying.value = true
         waveTrack.play()
@@ -335,7 +335,7 @@ class MainActivity : ComponentActivity() {
         if (BuildConfig.DEBUG) {
             FirebaseCrashlytics.getInstance().deleteUnsentReports()
         }
-        wakeLock.release()
+        if (wakeLock.isHeld) wakeLock.release()
         waveTrack.stop()
         waveTrack.release()
     }
