@@ -145,9 +145,12 @@ class MainActivity : ComponentActivity() {
         if (!wakeLock.isHeld) wakeLock.acquire(Duration.ofHours(10).toMillis())
         firebaseAnalytics.logEvent("start_playback", null)
         isPlaying.value = true
-        if (!::waveTrack.isInitialized) onSetSelectedSound(selectedSoundIndex.value) else {
-            waveTrack.play()
-            shaper.apply(VolumeShaper.Operation.PLAY)
+        when (::waveTrack.isInitialized) {
+            false -> onSetSelectedSound(selectedSoundIndex.value)
+            else -> {
+                waveTrack.play()
+                shaper.apply(VolumeShaper.Operation.PLAY)
+            }
         }
     }
 
@@ -450,7 +453,9 @@ class MainActivity : ComponentActivity() {
             FirebaseCrashlytics.getInstance().deleteUnsentReports()
         }
         if (wakeLock.isHeld) wakeLock.release()
-        waveTrack.stop()
-        waveTrack.release()
+        if (::waveTrack.isInitialized) {
+            waveTrack.stop()
+            waveTrack.release()
+        }
     }
 }
