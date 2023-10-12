@@ -17,6 +17,7 @@ import java.time.Instant
 
 @Composable
 fun TimerButtons(
+    enabled: Boolean,
     timers: Map<String, TimerDef>,
     timeRemaining: Duration?,
     sleepTime: Instant?,
@@ -31,6 +32,7 @@ fun TimerButtons(
             selectedTimer: String?,
         ) =
             Button(
+                enabled = enabled,
                 modifier = Modifier.weight(1f),
                 colors = when (selectedTimer == key) {
                     true -> ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)

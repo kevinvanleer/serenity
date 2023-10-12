@@ -1,13 +1,13 @@
 package com.kvl.serenity
 
 import android.content.Context
-import android.content.res.AssetManager
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
 import android.media.VolumeShaper
 import android.os.Bundle
 import android.os.CountDownTimer
+import android.os.Environment
 import android.os.PowerManager
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -20,16 +20,23 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.lifecycle.lifecycleScope
+import com.google.android.gms.tasks.Tasks
 import com.google.firebase.analytics.FirebaseAnalytics
 import com.google.firebase.crashlytics.FirebaseCrashlytics
+import com.google.firebase.storage.FileDownloadTask
+import com.google.firebase.storage.FirebaseStorage
+import com.google.firebase.storage.StorageException
+import com.google.firebase.storage.StorageReference
+import com.google.gson.Gson
 import com.kvl.serenity.ui.theme.SerenityTheme
-import com.kvl.serenity.util.isPlaying
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import java.io.File
 import java.time.Duration
 import java.time.Instant
 import java.time.temporal.ChronoUnit
@@ -41,9 +48,11 @@ const val VOLUME_RAMP_TIME = 2000L
 
 val Context.dataStore by preferencesDataStore(name = "state")
 val CURRENT_SOUND_SELECTION_KEY = intPreferencesKey("current_sound_selection")
+val SOUND_DEF = stringPreferencesKey("sound_def")
 
 class MainActivity : ComponentActivity() {
-    private lateinit var assetManager: AssetManager
+    private lateinit var soundsDir: File
+    private lateinit var firebaseStorage: StorageReference
     private lateinit var firebaseAnalytics: FirebaseAnalytics
     private lateinit var waveTrack: AudioTrack
     private lateinit var shaper: VolumeShaper
@@ -55,32 +64,9 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var wakeLock: PowerManager.WakeLock
 
-
     private val selectedSoundIndex = mutableStateOf(0)
-
-
-    private val sounds = listOf(
-        SoundDef(
-            name = "Roaring Fork",
-            location = "The Great Smoky Mountains",
-            filename = "roaring-fork-long.wav"
-        ),
-        SoundDef(
-            name = "Evening in Fall",
-            location = "Rural Missouri",
-            filename = "beaufort-mo-fall-evening.wav"
-        ),
-        SoundDef(
-            name = "Morning in Fall",
-            location = "Rural Missouri",
-            filename = "krakow-mo-fall-morning.wav"
-        ),
-        SoundDef(
-            name = "Rocky Beach",
-            location = "Hawaii",
-            filename = "hawaii-rocky-beach.wav"
-        )
-    )
+    private val sounds = mutableStateOf((emptyList<SoundDef>()))
+    private val downloading = mutableStateOf(false)
 
     fun pausePlayback() {
         Log.d("MediaPlayer", "Pausing playback")
@@ -153,18 +139,14 @@ class MainActivity : ComponentActivity() {
         //}
     }
 
-    private fun recordVolumeShaperError(e: java.lang.IllegalStateException) {
-        Log.e("onClick", "Could not apply volume shaper", e)
-        FirebaseCrashlytics.getInstance().recordException(e)
-        FirebaseCrashlytics.getInstance().log("Could not apply volume shaper")
-    }
-
     private fun onStartPlayback() {
         if (!wakeLock.isHeld) wakeLock.acquire(Duration.ofHours(10).toMillis())
         firebaseAnalytics.logEvent("start_playback", null)
         isPlaying.value = true
-        waveTrack.play()
-        shaper.apply(VolumeShaper.Operation.PLAY)
+        if (!::waveTrack.isInitialized) onSetSelectedSound(selectedSoundIndex.value) else {
+            waveTrack.play()
+            shaper.apply(VolumeShaper.Operation.PLAY)
+        }
     }
 
     private fun onPausePlayback() {
@@ -200,7 +182,7 @@ class MainActivity : ComponentActivity() {
 
         lifecycleScope.launch(Dispatchers.IO) {
             Log.d("PREFS", "Setting selected sound to $selected")
-            getWaveTrack("sounds/${sounds[selectedSoundIndex.value].filename}")
+            getWaveTrack(sounds.value[selectedSoundIndex.value].filename)
             dataStore.edit { settings ->
                 settings[CURRENT_SOUND_SELECTION_KEY] = selectedSoundIndex.value
             }
@@ -210,8 +192,15 @@ class MainActivity : ComponentActivity() {
     private fun getWaveTrack(filePathString: String) {
         Log.d("SND", "Loading $filePathString")
 
+        wakeLock =
+            (getSystemService(Context.POWER_SERVICE) as PowerManager).run {
+                newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Serenity::PlaybackWakeLock")
+            }
         val waveFile = WaveFile(
-            assetManager.open(filePathString, AssetManager.ACCESS_BUFFER)
+            File(
+                soundsDir,
+                filePathString
+            ).inputStream()
         )
 
         if (::waveTrack.isInitialized) waveTrack.release()
@@ -270,49 +259,145 @@ class MainActivity : ComponentActivity() {
 
     }
 
+    private fun downloadFromManifest() {
+        val tasks: List<FileDownloadTask> = sounds.value.map { it.filename }.mapNotNull { file ->
+            Log.d("FIREBASE_STORAGE", file)
+            File(
+                soundsDir,
+                file
+            ).exists().takeIf { e -> !e }?.let {
+                downloading.value = true
+                Log.d("FIREBASE_STORAGE", "Downloading file")
+                //item.metadata.result.md5Hash
+                firebaseStorage.child(file)
+                    .getFile(
+                        File(
+                            soundsDir,
+                            file
+                        )
+                    )
+            }
+        }
+
+        Tasks.whenAll(tasks).addOnCompleteListener {
+            downloading.value = false
+        }
+    }
+
+    private fun initializeUi() {
+        Log.d("onCreate", "initializeUi")
+        setContent {
+            SerenityTheme {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    App(
+                        downloading = downloading.value,
+                        sounds = sounds.value,
+                        selectedSoundIndex = selectedSoundIndex.value,
+                        onSetSelectedSound = { idx: Int -> onSetSelectedSound(idx) },
+                        buttonEnabled = enablePlayback.value,
+                        isPlaying = isPlaying.value,
+                        sleepTime = sleepTime.value,
+                        onClick = {
+                            when (isPlaying.value) {
+                                true -> onPausePlayback()
+                                else -> onStartPlayback()
+                            }
+                        },
+                        startSleepTimer = { sleepTime: Int? ->
+                            when (sleepTime == null) {
+                                true -> onCancelSleepTimer()
+                                else -> onStartSleepTimer(sleepTime)
+                            }
+                        }
+                    )
+                }
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        lifecycleScope.launch {
+        initializeUi()
+
+        soundsDir = File(
+            when (Environment.isExternalStorageEmulated()) {
+                true -> applicationContext.filesDir
+                else -> applicationContext.getExternalFilesDir(null)
+            }, "sounds"
+        )
+        if (!soundsDir.exists()) {
+            Log.d("onCreate", "Creating sounds directory")
+            soundsDir.mkdirs()
+        }
+
+        lifecycleScope.launch(Dispatchers.IO) {
             dataStore.data.map { prefs ->
                 prefs[CURRENT_SOUND_SELECTION_KEY]
             }.collect {
                 Log.d("PREFS", "Current sound selection: $it")
                 selectedSoundIndex.value = it ?: 0
+            }
+        }
 
-                setContent {
-                    SerenityTheme {
-                        Surface(
-                            modifier = Modifier.fillMaxSize(),
-                            color = MaterialTheme.colorScheme.background
-                        ) {
-                            App(
-                                sounds = sounds,
-                                selectedSoundIndex = selectedSoundIndex.value,
-                                onSetSelectedSound = { idx: Int -> onSetSelectedSound(idx) },
-                                buttonEnabled = enablePlayback.value,
-                                isPlaying = isPlaying.value,
-                                sleepTime = sleepTime.value,
-                                onClick = {
-                                    when (waveTrack.isPlaying) {
-                                        true -> onPausePlayback()
-                                        else -> onStartPlayback()
-                                    }
-                                },
-                                startSleepTimer = { sleepTime: Int? ->
-                                    when (sleepTime == null) {
-                                        true -> onCancelSleepTimer()
-                                        else -> onStartSleepTimer(sleepTime)
-                                    }
-                                }
-                            )
-                        }
+        lifecycleScope.launch {
+            dataStore.data.map { prefs ->
+                prefs[SOUND_DEF]
+            }.collect { pref ->
+                if (pref != null) {
+                    Log.d("onCreate", "Getting sound def from pref")
+                    sounds.value = Gson().fromJson(
+                        pref, Array<SoundDef>::class.java
+                    ).toList()
+                    sounds.value.all { sound ->
+                        File(soundsDir, sound.filename).exists()
+                    }.takeIf { it }.let {
+                        Log.d("onCreate", "Took shortcut to initialize sounds")
+                        //initializeUi()
+                        downloading.value = false
                     }
+                } else {
+                    Log.d("onCreate", "No sound def pref")
+                    downloading.value = true
                 }
             }
         }
 
-        assetManager = createPackageContext("com.kvl.serenity", 0).assets
+        firebaseStorage = FirebaseStorage.getInstance().let {
+            when (BuildConfig.DEBUG) {
+                true -> it.getReference("dev")
+                else -> it.reference
+            }
+        }
+
+        lifecycleScope.launch {
+            firebaseStorage.child("sound-def.json").getBytes(1000)
+                .addOnSuccessListener {
+                    val jsonString = it.decodeToString()
+
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        dataStore.edit { settings ->
+                            settings[SOUND_DEF] = jsonString
+                        }
+                    }
+                    sounds.value = Gson().fromJson(
+                        jsonString, Array<SoundDef>::class.java
+                    ).toList()
+
+                    downloadFromManifest()
+                }.addOnFailureListener {
+                    Log.e(
+                        "onCreate",
+                        "Failed to get sound definitions: ${(it as StorageException).errorCode}:${it.httpResultCode}",
+                        it
+                    )
+
+
+                }
+        }
 
         wakeLock =
             (getSystemService(Context.POWER_SERVICE) as PowerManager).run {
@@ -328,6 +413,7 @@ class MainActivity : ComponentActivity() {
             putString(FirebaseAnalytics.Param.SCREEN_NAME, "MainActivity")
             putString(FirebaseAnalytics.Param.SCREEN_CLASS, "MainActivity")
         })
+
     }
 
     override fun onDestroy() {

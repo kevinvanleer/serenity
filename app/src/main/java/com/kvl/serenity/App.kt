@@ -1,5 +1,6 @@
 package com.kvl.serenity
 
+import android.util.Log
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,14 +14,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.kvl.serenity.ui.theme.SerenityTheme
@@ -31,6 +35,7 @@ import java.time.temporal.ChronoUnit
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun App(
+    downloading: Boolean,
     sounds: List<SoundDef>,
     selectedSoundIndex: Int,
     onSetSelectedSound: (Int) -> Unit,
@@ -77,10 +82,16 @@ fun App(
     val timeRemaining: MutableState<Duration?> = remember { mutableStateOf(null) }
     val fractionRemaining = remember { mutableStateOf(0f) }
     val pagerState = rememberPagerState(selectedSoundIndex)
+    val currentSounds = rememberUpdatedState(newValue = sounds)
+    val currentDownloadStatus = rememberUpdatedState(newValue = downloading)
 
     LaunchedEffect(pagerState) {
         snapshotFlow { pagerState.currentPage }.collect { page ->
-            onSetSelectedSound(page)
+            Log.d("PAGER_STATE", "Page changed to $page")
+            if (currentSounds.value.isNotEmpty() && !currentDownloadStatus.value) {
+                Log.d("PAGER_STATE", "Setting selected sound to $page")
+                onSetSelectedSound(page)
+            }
         }
     }
 
@@ -125,13 +136,24 @@ fun App(
                 .fillMaxWidth()
                 .weight(1f)
         ) {
-            CircularProgressIndicator(
-                progress = fractionRemaining.value,
-                modifier = Modifier
-                    .aspectRatio(1f, matchHeightConstraintsFirst = true),
-                strokeWidth = 6.dp
-            )
-            Box(Modifier.padding(9.dp)) {
+            when (downloading) {
+                true -> {
+                    CircularProgressIndicator(
+                        modifier = Modifier
+                            .aspectRatio(1f, matchHeightConstraintsFirst = true),
+                        strokeWidth = 6.dp
+                    )
+                    Text("Downloading\nsounds", textAlign = TextAlign.Center)
+                }
+
+                else -> CircularProgressIndicator(
+                    progress = fractionRemaining.value,
+                    modifier = Modifier
+                        .aspectRatio(1f, matchHeightConstraintsFirst = true),
+                    strokeWidth = 6.dp
+                )
+            }
+            if (!downloading) Box(Modifier.padding(9.dp)) {
                 PlayPauseButton(enabled = buttonEnabled, onClick = onClick, isPlaying = isPlaying)
             }
         }
@@ -143,6 +165,7 @@ fun App(
                 .padding(16.dp)
         ) {
             TimerButtons(
+                enabled = !downloading,
                 timers = timers,
                 timeRemaining = timeRemaining.value,
                 sleepTime = sleepTime,
@@ -159,6 +182,66 @@ fun App(
 @Composable
 fun AppPreview() {
     SerenityTheme {
-        App(emptyList(), 0, {}, {}, {}, isPlaying = false, sleepTime = null, buttonEnabled = true)
+        App(
+            false,
+            listOf(
+                SoundDef(
+                    name = "Sound 1",
+                    location = "Location 1",
+                    filename = "filename-1.wav"
+                ),
+                SoundDef(
+                    name = "Sound 2",
+                    location = "Location 2",
+                    filename = "filename-2.wav"
+                ),
+                SoundDef(
+                    name = "Sound 3",
+                    location = "Location 3",
+                    filename = "filename-3.wav"
+                )
+            ),
+            0,
+            {},
+            {},
+            {},
+            isPlaying = false,
+            sleepTime = null,
+            buttonEnabled = true
+        )
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun AppDownloadingPreview() {
+    SerenityTheme {
+        App(
+            true,
+            listOf(
+                SoundDef(
+                    name = "Sound 1",
+                    location = "Location 1",
+                    filename = "filename-1.wav"
+                ),
+                SoundDef(
+                    name = "Sound 2",
+                    location = "Location 2",
+                    filename = "filename-2.wav"
+                ),
+                SoundDef(
+                    name = "Sound 3",
+                    location = "Location 3",
+                    filename = "filename-3.wav"
+                )
+            ),
+            0,
+            {},
+            {},
+            {},
+            isPlaying = false,
+            sleepTime = null,
+            buttonEnabled = true
+        )
     }
 }

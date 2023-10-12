@@ -63,44 +63,46 @@ class WaveFile(private val inputStream: InputStream) {
         sampleSize = twoByteArray.toShort().toInt()
         Log.d("WAVE", "${sampleSize.toShort()}")
 
-        val factChunk = ByteArray(4)
-        inputStream.read(factChunk)
-        Log.d("WAVE", factChunk.decodeToString())
-        if (factChunk.decodeToString() != "fact") throw RuntimeException("INVALID FACT CHUNK HEADER: ${factChunk.decodeToString()}")
 
-        val factChunkSize = ByteArray(4)
-        inputStream.read(factChunkSize)
-        Log.d("WAVE", "${factChunkSize.toInt()}")
+        inputStream.read(fourByteArray)
+        Log.d("WAVE", fourByteArray.decodeToString())
+        if (fourByteArray.decodeToString() == "fact") {
+            //throw RuntimeException("INVALID FACT CHUNK HEADER: ${factChunk.decodeToString()}")
 
-        val factChunkSampleLength = ByteArray(4)
-        inputStream.read(factChunkSampleLength)
-        Log.d("WAVE", "${factChunkSampleLength.toInt()}")
+            val factChunkSize = ByteArray(4)
+            inputStream.read(factChunkSize)
+            Log.d("WAVE", "${factChunkSize.toInt()}")
 
-        val peakChunk = ByteArray(4)
-        inputStream.read(peakChunk)
-        Log.d("WAVE", peakChunk.decodeToString())
-        if (peakChunk.decodeToString() != "PEAK") throw RuntimeException("INVALID PEAK CHUNK HEADER: ${peakChunk.decodeToString()}")
+            val factChunkSampleLength = ByteArray(4)
+            inputStream.read(factChunkSampleLength)
+            Log.d("WAVE", "${factChunkSampleLength.toInt()}")
 
-        val peakChunkSize = ByteArray(4)
-        inputStream.read(peakChunkSize)
-        Log.d("WAVE", "${peakChunkSize.toInt()}")
+            val peakChunk = ByteArray(4)
+            inputStream.read(peakChunk)
+            Log.d("WAVE", peakChunk.decodeToString())
+            if (peakChunk.decodeToString() != "PEAK") throw RuntimeException("INVALID PEAK CHUNK HEADER: ${peakChunk.decodeToString()}")
 
-        val peakChunkVersion = ByteArray(4)
-        inputStream.read(peakChunkVersion)
-        Log.d("WAVE", "${peakChunkVersion.toInt()}")
+            val peakChunkSize = ByteArray(4)
+            inputStream.read(peakChunkSize)
+            Log.d("WAVE", "${peakChunkSize.toInt()}")
 
-        val peakChunkTimestamp = ByteArray(4)
-        inputStream.read(peakChunkTimestamp)
-        Log.d("WAVE", "${peakChunkTimestamp.toInt()}")
+            val peakChunkVersion = ByteArray(4)
+            inputStream.read(peakChunkVersion)
+            Log.d("WAVE", "${peakChunkVersion.toInt()}")
 
-        val peakData = ByteArray(peakChunkSize.toInt() - 8)
-        inputStream.read(peakData)
-        Log.d("WAVE", "$peakData")
+            val peakChunkTimestamp = ByteArray(4)
+            inputStream.read(peakChunkTimestamp)
+            Log.d("WAVE", "${peakChunkTimestamp.toInt()}")
 
-        val dataChunk = ByteArray(4)
-        inputStream.read(dataChunk)
-        Log.d("WAVE", dataChunk.decodeToString())
-        if (dataChunk.decodeToString() != "data") throw RuntimeException("INVALID DATA CHUNK HEADER: ${dataChunk.decodeToString()}")
+            val peakData = ByteArray(peakChunkSize.toInt() - 8)
+            inputStream.read(peakData)
+            Log.d("WAVE", "$peakData")
+
+            inputStream.read(fourByteArray)
+        }
+
+        Log.d("WAVE", fourByteArray.decodeToString())
+        if (fourByteArray.decodeToString() != "data") throw RuntimeException("INVALID DATA CHUNK HEADER: ${fourByteArray.decodeToString()}")
 
         inputStream.read(fourByteArray)
         dataSize = fourByteArray.toInt()

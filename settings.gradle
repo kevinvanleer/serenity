@@ -14,4 +14,3 @@ dependencyResolutionManagement {
 }
 rootProject.name = "Serenity"
 include ':app'
-include ':sounds'
