@@ -1,6 +1,8 @@
 package com.kvl.serenity
 
+import com.google.common.collect.ImmutableList
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Test
 
 /**
@@ -12,5 +14,7 @@ class ExampleUnitTest {
     @Test
     fun addition_isCorrect() {
         assertEquals(4, 2 + 2)
+        assertNotNull(ImmutableList::class.java)
+        assertNotNull(ImmutableList.toImmutableList<String>())
     }
 }

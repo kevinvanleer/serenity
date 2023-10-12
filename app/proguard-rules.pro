@@ -19,3 +19,16 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 -renamesourcefileattribute SourceFile
+
+-keep class com.google.api.client.json.** {*;}
+-keep class com.google.api.services.storage.** {*;}
+
+-dontwarn com.google.appengine.api.urlfetch.FetchOptions$Builder
+-dontwarn com.google.appengine.api.urlfetch.FetchOptions
+-dontwarn com.google.appengine.api.urlfetch.HTTPHeader
+-dontwarn com.google.appengine.api.urlfetch.HTTPMethod
+-dontwarn com.google.appengine.api.urlfetch.HTTPRequest
+-dontwarn com.google.appengine.api.urlfetch.HTTPResponse
+-dontwarn com.google.appengine.api.urlfetch.URLFetchService
+-dontwarn com.google.appengine.api.urlfetch.URLFetchServiceFactory
+-dontwarn reactor.blockhound.integration.BlockHoundIntegration

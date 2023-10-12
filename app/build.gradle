@@ -1,3 +1,5 @@
+import groovy.json.JsonSlurper
+
 plugins {
     id 'com.android.application'
     id 'org.jetbrains.kotlin.android'
@@ -13,18 +15,24 @@ android {
         applicationId "com.kvl.serenity"
         minSdk 28
         targetSdk 33
-        versionCode 7
-        versionName "External sounds"
+        versionCode 9
+        versionName "Google Cloud Storage"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary true
         }
+
+        def serviceAccountJson = new JsonSlurper().parseText(file('./serenity-401211-3092427ec190.json').text)
+        serviceAccountJson.each {
+            resValue "string", "serenity_service_account_" + it.key, (it.value ?: "")
+        }
     }
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled true
+            shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             signingConfig signingConfigs.debug
         }
@@ -50,12 +58,23 @@ android {
     }
     packagingOptions {
         resources {
-            excludes += '/META-INF/{AL2.0,LGPL2.1}'
+            excludes += '/META-INF/{AL2.0,LGPL2.1,INDEX.LIST,*LICENSE,*NOTICE}'
+            excludes += '/META-INF/license/**'
+            excludes += '/META-INF/native/**'
+            excludes += '/META-INF/native-image/**'
         }
     }
 }
 
+configurations.all {
+    resolutionStrategy {
+        force 'com.google.guava:guava:27.0.1-jre'
+    }
+}
+
 dependencies {
+    implementation platform('com.google.cloud:libraries-bom:26.24.0')
+    implementation 'com.google.cloud:google-cloud-storage'
     implementation 'com.google.code.gson:gson:2.10.1'
     implementation platform('com.google.firebase:firebase-bom:32.3.1')
     implementation 'com.google.firebase:firebase-analytics-ktx'
