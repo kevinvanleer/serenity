@@ -86,7 +86,7 @@ class MainActivity : ComponentActivity() {
                 try {
                     currentVolume = millisUntilFinished.toFloat() / duration.toMillis()
                     Log.d("Fade out", "Decreasing volume: $currentVolume")
-                    waveTrack.setVolume(currentVolume)
+                    if (::waveTrack.isInitialized) waveTrack.setVolume(currentVolume)
                 } catch (_: IllegalStateException) {
                     Log.d("Fade out", "Something went wrong with media player")
                 }
@@ -95,7 +95,7 @@ class MainActivity : ComponentActivity() {
             override fun onFinish() {
                 Log.d("Fade out", "Fade out finished")
                 pausePlayback()
-                waveTrack.setVolume(1f)
+                if (::waveTrack.isInitialized) waveTrack.setVolume(1f)
             }
 
         }
@@ -114,16 +114,18 @@ class MainActivity : ComponentActivity() {
             Log.d("Fader", "Canceling fader")
             fader.cancel()
             delayTimer.cancel()
-            waveTrack.createVolumeShaper(
-                VolumeShaper.Configuration.Builder()
-                    .setDuration(VOLUME_RAMP_TIME)
-                    .setCurve(
-                        floatArrayOf(0f, 1f), floatArrayOf(currentVolume, 1f)
-                    )
-                    .setInterpolatorType(VolumeShaper.Configuration.INTERPOLATOR_TYPE_LINEAR)
-                    .build()
-            ).apply(VolumeShaper.Operation.PLAY)
-            waveTrack.setVolume(1f)
+            if (::waveTrack.isInitialized) {
+                waveTrack.createVolumeShaper(
+                    VolumeShaper.Configuration.Builder()
+                        .setDuration(VOLUME_RAMP_TIME)
+                        .setCurve(
+                            floatArrayOf(0f, 1f), floatArrayOf(currentVolume, 1f)
+                        )
+                        .setInterpolatorType(VolumeShaper.Configuration.INTERPOLATOR_TYPE_LINEAR)
+                        .build()
+                ).apply(VolumeShaper.Operation.PLAY)
+                waveTrack.setVolume(1f)
+            }
         }
     }
 
