@@ -86,7 +86,7 @@ class MainActivity : ComponentActivity() {
                 try {
                     currentVolume = millisUntilFinished.toFloat() / duration.toMillis()
                     Log.d("Fade out", "Decreasing volume: $currentVolume")
-                    waveTrack.setVolume(currentVolume)
+                    if (::waveTrack.isInitialized) waveTrack.setVolume(currentVolume)
                 } catch (_: IllegalStateException) {
                     Log.d("Fade out", "Something went wrong with media player")
                 }
@@ -95,7 +95,7 @@ class MainActivity : ComponentActivity() {
             override fun onFinish() {
                 Log.d("Fade out", "Fade out finished")
                 pausePlayback()
-                waveTrack.setVolume(1f)
+                if (::waveTrack.isInitialized) waveTrack.setVolume(1f)
             }
 
         }
@@ -114,16 +114,18 @@ class MainActivity : ComponentActivity() {
             Log.d("Fader", "Canceling fader")
             fader.cancel()
             delayTimer.cancel()
-            waveTrack.createVolumeShaper(
-                VolumeShaper.Configuration.Builder()
-                    .setDuration(VOLUME_RAMP_TIME)
-                    .setCurve(
-                        floatArrayOf(0f, 1f), floatArrayOf(currentVolume, 1f)
-                    )
-                    .setInterpolatorType(VolumeShaper.Configuration.INTERPOLATOR_TYPE_LINEAR)
-                    .build()
-            ).apply(VolumeShaper.Operation.PLAY)
-            waveTrack.setVolume(1f)
+            if (::waveTrack.isInitialized) {
+                waveTrack.createVolumeShaper(
+                    VolumeShaper.Configuration.Builder()
+                        .setDuration(VOLUME_RAMP_TIME)
+                        .setCurve(
+                            floatArrayOf(0f, 1f), floatArrayOf(currentVolume, 1f)
+                        )
+                        .setInterpolatorType(VolumeShaper.Configuration.INTERPOLATOR_TYPE_LINEAR)
+                        .build()
+                ).apply(VolumeShaper.Operation.PLAY)
+                waveTrack.setVolume(1f)
+            }
         }
     }
 
@@ -145,8 +147,13 @@ class MainActivity : ComponentActivity() {
         if (!wakeLock.isHeld) wakeLock.acquire(Duration.ofHours(10).toMillis())
         firebaseAnalytics.logEvent("start_playback", null)
         isPlaying.value = true
-        waveTrack.play()
-        shaper.apply(VolumeShaper.Operation.PLAY)
+        when (::waveTrack.isInitialized) {
+            false -> onSetSelectedSound(selectedSoundIndex.value)
+            else -> {
+                waveTrack.play()
+                shaper.apply(VolumeShaper.Operation.PLAY)
+            }
+        }
     }
 
     private fun onPausePlayback() {
@@ -203,7 +210,7 @@ class MainActivity : ComponentActivity() {
             ).inputStream()
         )
 
-        waveTrack.release()
+        if (::waveTrack.isInitialized) waveTrack.release()
 
         waveTrack = AudioTrack.Builder()
             .setAudioAttributes(
@@ -301,7 +308,6 @@ class MainActivity : ComponentActivity() {
 
     private fun initializeUi() {
         Log.d("onCreate", "initializeUi")
-
         setContent {
             SerenityTheme {
                 Surface(
@@ -334,30 +340,9 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun initializeWaveTrack() {
-        waveTrack = AudioTrack.Builder()
-            .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                    .build()
-            )
-            .setAudioFormat(
-                AudioFormat.Builder()
-                    .setEncoding(AudioFormat.ENCODING_DEFAULT)
-                    .setSampleRate(AudioFormat.SAMPLE_RATE_UNSPECIFIED)
-                    .setChannelMask(AudioFormat.CHANNEL_OUT_DEFAULT)
-                    .build()
-            )
-            .setTransferMode(AudioTrack.MODE_STATIC)
-            .setBufferSizeInBytes(0)
-            .build()
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        initializeWaveTrack()
         initializeUi()
 
         soundsDir = File(
@@ -470,7 +455,9 @@ class MainActivity : ComponentActivity() {
             FirebaseCrashlytics.getInstance().deleteUnsentReports()
         }
         if (wakeLock.isHeld) wakeLock.release()
-        waveTrack.stop()
-        waveTrack.release()
+        if (::waveTrack.isInitialized) {
+            waveTrack.stop()
+            waveTrack.release()
+        }
     }
 }
