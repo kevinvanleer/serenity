@@ -1,10 +1,12 @@
 package com.kvl.serenity
 
+import android.Manifest.permission.BLUETOOTH_SCAN
 import android.bluetooth.BluetoothHeadset
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
@@ -22,6 +24,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.core.content.ContextCompat
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -67,6 +70,7 @@ class MainActivity : ComponentActivity() {
 
     private val isPlaying = mutableStateOf(false)
     private val enablePlayback = mutableStateOf(true)
+    private val bluetoothConnectStatePermissionGranted = mutableStateOf(true)
 
     private lateinit var wakeLock: PowerManager.WakeLock
 
@@ -78,7 +82,7 @@ class MainActivity : ComponentActivity() {
     fun pausePlayback() {
         Log.d("MediaPlayer", "Pausing playback")
         if (wakeLock.isHeld) wakeLock.release()
-        waveTrack.pause()
+        if (::waveTrack.isInitialized) waveTrack.pause()
         isPlaying.value = false
         enablePlayback.value = true
         sleepTime.value = null
@@ -149,6 +153,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun onStartPlayback() {
+        updatePermissionGrants()
         if (!wakeLock.isHeld) wakeLock.acquire(Duration.ofHours(10).toMillis())
         firebaseAnalytics.logEvent("start_playback", null)
         isPlaying.value = true
@@ -341,12 +346,37 @@ class MainActivity : ComponentActivity() {
                         }
                     )
                 }
+                if (!bluetoothConnectStatePermissionGranted.value) NearbyDevicesPermissionDialog(
+                    onAllow = {
+                        requestPermissions(arrayOf(BLUETOOTH_SCAN), 0)
+                        bluetoothConnectStatePermissionGranted.value = true
+                    },
+                )
             }
+        }
+    }
+
+    private fun updatePermissionGrants() {
+        when (ContextCompat.checkSelfPermission(
+            this,
+            BLUETOOTH_SCAN
+        )) {
+            PackageManager.PERMISSION_DENIED -> bluetoothConnectStatePermissionGranted.value = false
+            PackageManager.PERMISSION_GRANTED -> bluetoothConnectStatePermissionGranted.value = true
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        /*when (ContextCompat.checkSelfPermission(
+            this,
+            BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED
+        )) {
+            PackageManager.PERMISSION_DENIED -> bluetoothConnectStatePermissionGranted.value = false
+            else -> bluetoothConnectStatePermissionGranted.value = true
+        }*/
+        updatePermissionGrants()
 
         applicationContext.registerReceiver(
             bluetoothReceiver,
