@@ -1,6 +1,6 @@
 package com.kvl.serenity
 
-import android.Manifest.permission.BLUETOOTH_SCAN
+import android.Manifest.permission.BLUETOOTH_CONNECT
 import android.bluetooth.BluetoothHeadset
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -348,7 +348,7 @@ class MainActivity : ComponentActivity() {
                 }
                 if (!bluetoothConnectStatePermissionGranted.value) NearbyDevicesPermissionDialog(
                     onAllow = {
-                        requestPermissions(arrayOf(BLUETOOTH_SCAN), 0)
+                        requestPermissions(arrayOf(BLUETOOTH_CONNECT), 0)
                         bluetoothConnectStatePermissionGranted.value = true
                     },
                 )
@@ -359,7 +359,7 @@ class MainActivity : ComponentActivity() {
     private fun updatePermissionGrants() {
         when (ContextCompat.checkSelfPermission(
             this,
-            BLUETOOTH_SCAN
+            BLUETOOTH_CONNECT
         )) {
             PackageManager.PERMISSION_DENIED -> bluetoothConnectStatePermissionGranted.value = false
             PackageManager.PERMISSION_GRANTED -> bluetoothConnectStatePermissionGranted.value = true
