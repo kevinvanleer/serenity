@@ -1,6 +1,10 @@
 package com.kvl.serenity
 
+import android.bluetooth.BluetoothHeadset
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
@@ -69,6 +73,7 @@ class MainActivity : ComponentActivity() {
     private val selectedSoundIndex = mutableStateOf(0)
     private val sounds = mutableStateOf((emptyList<SoundDef>()))
     private val downloading = mutableStateOf(false)
+    private val bluetoothReceiver = BluetoothConnectionStateReceiver()
 
     fun pausePlayback() {
         Log.d("MediaPlayer", "Pausing playback")
@@ -343,8 +348,25 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        initializeUi()
+        applicationContext.registerReceiver(
+            bluetoothReceiver,
+            IntentFilter(BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED),
+            RECEIVER_EXPORTED
+        )
 
+        applicationContext.registerReceiver(
+            object : BroadcastReceiver() {
+                override fun onReceive(context: Context?, intent: Intent?) {
+                    when (intent?.action) {
+                        "com.kvl.serenity.pause_playback" -> pausePlayback()
+                    }
+                }
+            },
+            IntentFilter("com.kvl.serenity.pause_playback"),
+            RECEIVER_NOT_EXPORTED
+        )
+
+        initializeUi()
         soundsDir = File(
             when (Environment.isExternalStorageEmulated()) {
                 true -> applicationContext.filesDir

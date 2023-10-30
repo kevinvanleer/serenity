@@ -15,8 +15,8 @@ android {
         applicationId "com.kvl.serenity"
         minSdk 28
         targetSdk 33
-        versionCode 12
-        versionName "Google Cloud Storage"
+        versionCode 13
+        versionName "Pause on bluetooth disconnect"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
