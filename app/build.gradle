@@ -15,8 +15,8 @@ android {
         applicationId "com.kvl.serenity"
         minSdk 28
         targetSdk 33
-        versionCode 15
-        versionName "Pause on bluetooth disconnect"
+        versionCode 16
+        versionName "Pause on bluetooth disconnect 2"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

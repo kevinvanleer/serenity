@@ -1,6 +1,7 @@
 package com.kvl.serenity
 
 import android.Manifest.permission.BLUETOOTH_CONNECT
+import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothHeadset
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -11,6 +12,7 @@ import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
 import android.media.VolumeShaper
+import android.os.Build
 import android.os.Bundle
 import android.os.CountDownTimer
 import android.os.Environment
@@ -81,7 +83,7 @@ class MainActivity : ComponentActivity() {
 
     fun pausePlayback() {
         Log.d("MediaPlayer", "Pausing playback")
-        if (wakeLock.isHeld) wakeLock.release()
+        if (::wakeLock.isInitialized && wakeLock.isHeld) wakeLock.release()
         if (::waveTrack.isInitialized) waveTrack.pause()
         isPlaying.value = false
         enablePlayback.value = true
@@ -357,30 +359,33 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun updatePermissionGrants() {
-        when (ContextCompat.checkSelfPermission(
-            this,
-            BLUETOOTH_CONNECT
-        )) {
-            PackageManager.PERMISSION_DENIED -> bluetoothConnectStatePermissionGranted.value = false
-            PackageManager.PERMISSION_GRANTED -> bluetoothConnectStatePermissionGranted.value = true
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            when (ContextCompat.checkSelfPermission(
+                this,
+                BLUETOOTH_CONNECT
+            )) {
+                PackageManager.PERMISSION_DENIED -> bluetoothConnectStatePermissionGranted.value =
+                    false
+
+                PackageManager.PERMISSION_GRANTED -> bluetoothConnectStatePermissionGranted.value =
+                    true
+            }
+        } else {
+            bluetoothConnectStatePermissionGranted.value = true
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        /*when (ContextCompat.checkSelfPermission(
-            this,
-            BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED
-        )) {
-            PackageManager.PERMISSION_DENIED -> bluetoothConnectStatePermissionGranted.value = false
-            else -> bluetoothConnectStatePermissionGranted.value = true
-        }*/
         updatePermissionGrants()
 
         applicationContext.registerReceiver(
             bluetoothReceiver,
-            IntentFilter(BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED),
+            IntentFilter().apply {
+                addAction(BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED)
+                addAction(BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED)
+            },
             RECEIVER_EXPORTED
         )
 
