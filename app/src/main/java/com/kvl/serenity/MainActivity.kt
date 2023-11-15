@@ -1,8 +1,6 @@
 package com.kvl.serenity
 
 import android.Manifest.permission.BLUETOOTH_CONNECT
-import android.bluetooth.BluetoothAdapter
-import android.bluetooth.BluetoothHeadset
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -380,26 +378,30 @@ class MainActivity : ComponentActivity() {
 
         updatePermissionGrants()
 
-        applicationContext.registerReceiver(
-            bluetoothReceiver,
-            IntentFilter().apply {
-                addAction(BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED)
-                addAction(BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED)
-            },
-            RECEIVER_EXPORTED
-        )
-
-        applicationContext.registerReceiver(
-            object : BroadcastReceiver() {
-                override fun onReceive(context: Context?, intent: Intent?) {
-                    when (intent?.action) {
-                        "com.kvl.serenity.pause_playback" -> pausePlayback()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(
+                object : BroadcastReceiver() {
+                    override fun onReceive(context: Context?, intent: Intent?) {
+                        when (intent?.action) {
+                            "com.kvl.serenity.pause_playback" -> pausePlayback()
+                        }
                     }
-                }
-            },
-            IntentFilter("com.kvl.serenity.pause_playback"),
-            RECEIVER_NOT_EXPORTED
-        )
+                },
+                IntentFilter("com.kvl.serenity.pause_playback"),
+                RECEIVER_NOT_EXPORTED
+            )
+        } else {
+            registerReceiver(
+                object : BroadcastReceiver() {
+                    override fun onReceive(context: Context?, intent: Intent?) {
+                        when (intent?.action) {
+                            "com.kvl.serenity.pause_playback" -> pausePlayback()
+                        }
+                    }
+                },
+                IntentFilter("com.kvl.serenity.pause_playback")
+            )
+        }
 
         initializeUi()
         soundsDir = File(
