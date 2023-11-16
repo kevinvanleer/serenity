@@ -15,8 +15,8 @@ android {
         applicationId "com.kvl.serenity"
         minSdk 28
         targetSdk 33
-        versionCode 16
-        versionName "Pause on bluetooth disconnect 2"
+        versionCode 17
+        versionName "Download worker"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -94,6 +94,7 @@ dependencies {
     implementation 'androidx.compose.material:material-icons-extended:1.4.3'
     implementation 'androidx.compose.foundation:foundation:1.4.3'
     implementation "androidx.datastore:datastore-preferences:1.0.0"
+    implementation "androidx.work:work-runtime-ktx:2.8.1"
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'

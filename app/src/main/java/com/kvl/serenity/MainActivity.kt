@@ -30,21 +30,18 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.lifecycle.lifecycleScope
-import com.google.auth.oauth2.ServiceAccountCredentials
-import com.google.cloud.storage.BlobId
-import com.google.cloud.storage.Storage
-import com.google.cloud.storage.StorageException
-import com.google.cloud.storage.StorageOptions
+import androidx.work.Data
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
 import com.google.firebase.analytics.FirebaseAnalytics
 import com.google.firebase.crashlytics.FirebaseCrashlytics
 import com.google.gson.Gson
 import com.kvl.serenity.ui.theme.SerenityTheme
-import com.kvl.serenity.util.calculateMd5
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.time.Duration
 import java.time.Instant
@@ -61,7 +58,6 @@ val SOUND_DEF = stringPreferencesKey("sound_def")
 
 class MainActivity : ComponentActivity() {
     private lateinit var soundsDir: File
-    private lateinit var gcpStorage: Storage
     private lateinit var firebaseAnalytics: FirebaseAnalytics
     private lateinit var waveTrack: AudioTrack
     private lateinit var shaper: VolumeShaper
@@ -276,46 +272,6 @@ class MainActivity : ComponentActivity() {
 
     }
 
-    private fun downloadFromManifest() {
-        sounds.value.map { it.filename }.forEach { filename ->
-            Log.d("GCP", filename)
-            File(
-                soundsDir,
-                filename
-            ).let { file ->
-                try {
-                    val blob = gcpStorage.get(
-                        BlobId.of(
-                            "serenity-sounds", when (BuildConfig.DEBUG) {
-                                true -> "dev/$filename"
-                                else -> filename
-                            }
-                        )
-                    )
-                    when (blob.md5 == calculateMd5(file.path)) {
-                        true -> Log.d("MD5", "MD5s match")
-                        false -> {
-                            Log.d("MD5", "MD5s conflict")
-                            Log.d("MD5", blob.md5)
-                            Log.d("MD5", calculateMd5(file.path).toString())
-                        }
-                    }
-                    if (!file.exists() || blob.md5 != calculateMd5(file.path)) {
-                        downloading.value = true
-                        Log.d("GCP", "Downloading file")
-                        blob.downloadTo(file.toPath())
-                        Log.d("GCP", "Download complete")
-                    }
-                } catch (e: StorageException) {
-                    FirebaseCrashlytics.getInstance().recordException(e)
-                    Log.e("GCP", "Failed to download $filename", e)
-                }
-            }
-        }
-
-        downloading.value = false
-    }
-
     private fun initializeUi() {
         Log.d("onCreate", "initializeUi")
         setContent {
@@ -346,12 +302,14 @@ class MainActivity : ComponentActivity() {
                         }
                     )
                 }
-                if (!bluetoothConnectStatePermissionGranted.value) NearbyDevicesPermissionDialog(
-                    onAllow = {
-                        requestPermissions(arrayOf(BLUETOOTH_CONNECT), 0)
-                        bluetoothConnectStatePermissionGranted.value = true
-                    },
-                )
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    if (!bluetoothConnectStatePermissionGranted.value) NearbyDevicesPermissionDialog(
+                        onAllow = {
+                            requestPermissions(arrayOf(BLUETOOTH_CONNECT), 0)
+                            bluetoothConnectStatePermissionGranted.value = true
+                        },
+                    )
+                }
             }
         }
     }
@@ -447,48 +405,41 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        Log.d("IAM", getString(R.string.serenity_service_account_client_id))
-        Log.d("IAM", getString(R.string.serenity_service_account_client_email))
-
-        gcpStorage = StorageOptions.newBuilder()
-            .setCredentials(
-                ServiceAccountCredentials.fromPkcs8(
-                    getString(R.string.serenity_service_account_client_id),
-                    getString(R.string.serenity_service_account_client_email),
-                    getString(R.string.serenity_service_account_private_key),
-                    getString(R.string.serenity_service_account_private_key_id),
-                    listOf("https://www.googleapis.com/auth/devstorage.read_only")
+        val downloadWorkTag = "com.kvl.cyclotrack:download-sounds"
+        WorkManager.getInstance(this).let { workManager ->
+            OneTimeWorkRequestBuilder<SoundDownloadWorker>()
+                .addTag(downloadWorkTag)
+                .setInputData(
+                    Data.Builder()
+                        .putString("soundsDir", soundsDir.toString())
+                        .build()
                 )
-            )
-            .setProjectId(getString(R.string.serenity_service_account_project_id))
-            .build().service
-
-        lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val blob = gcpStorage.get(
-                    BlobId.of(
-                        "serenity-sounds", when (BuildConfig.DEBUG) {
-                            true -> "dev/sound-def.json"
-                            else -> "sound-def.json"
+                .build().let { request ->
+                    workManager.beginUniqueWork(
+                        downloadWorkTag,
+                        ExistingWorkPolicy.KEEP,
+                        request
+                    ).enqueue()
+                    workManager.getWorkInfoByIdLiveData(request.id)
+                        .let { downloadOutput ->
+                            downloadOutput.observe(this) { workInfo ->
+                                downloading.value = !workInfo.state.isFinished
+                                if (workInfo.state.isFinished) {
+                                    workInfo.outputData.getString("soundManifest")
+                                        ?.let { jsonString ->
+                                            lifecycleScope.launch(Dispatchers.IO) {
+                                                dataStore.edit { settings ->
+                                                    settings[SOUND_DEF] = jsonString
+                                                }
+                                            }
+                                            sounds.value = Gson().fromJson(
+                                                jsonString, Array<SoundDef>::class.java
+                                            ).toList()
+                                        }
+                                }
+                            }
                         }
-                    )
-                )
-                val os = ByteArrayOutputStream()
-                blob.downloadTo(os)
-                Log.d("GCP", "Downloaded manifest")
-                val jsonString = os.toByteArray().decodeToString()
-                dataStore.edit { settings ->
-                    settings[SOUND_DEF] = jsonString
                 }
-                sounds.value = Gson().fromJson(
-                    jsonString, Array<SoundDef>::class.java
-                ).toList()
-
-                downloadFromManifest()
-            } catch (e: StorageException) {
-                FirebaseCrashlytics.getInstance().recordException(e)
-                Log.e("GCP", "Failed to download sound manifest", e)
-            }
         }
 
         wakeLock =
