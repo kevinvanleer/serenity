@@ -30,9 +30,13 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.lifecycle.lifecycleScope
+import androidx.work.BackoffPolicy
+import androidx.work.Constraints
 import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import com.google.firebase.analytics.FirebaseAnalytics
 import com.google.firebase.crashlytics.FirebaseCrashlytics
@@ -40,7 +44,7 @@ import com.google.gson.Gson
 import com.kvl.serenity.ui.theme.SerenityTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.io.File
 import java.time.Duration
@@ -49,6 +53,7 @@ import java.time.temporal.ChronoUnit
 import java.util.Date
 import java.util.Timer
 import java.util.TimerTask
+import java.util.concurrent.TimeUnit
 
 const val VOLUME_RAMP_TIME = 2000L
 
@@ -57,6 +62,8 @@ val CURRENT_SOUND_SELECTION_KEY = intPreferencesKey("current_sound_selection")
 val SOUND_DEF = stringPreferencesKey("sound_def")
 
 class MainActivity : ComponentActivity() {
+    private val downloadSoundWorkTag = "com.kvl.cyclotrack:download-sound"
+    private val workManager = WorkManager.getInstance(this)
     private lateinit var soundsDir: File
     private lateinit var firebaseAnalytics: FirebaseAnalytics
     private lateinit var waveTrack: AudioTrack
@@ -72,8 +79,7 @@ class MainActivity : ComponentActivity() {
 
     private val selectedSoundIndex = mutableStateOf(0)
     private val sounds = mutableStateOf((emptyList<SoundDef>()))
-    private val downloading = mutableStateOf(false)
-    private val bluetoothReceiver = BluetoothConnectionStateReceiver()
+    private val downloadProgress = mutableStateOf((emptyMap<String, Float>()))
 
     fun pausePlayback() {
         Log.d("MediaPlayer", "Pausing playback")
@@ -193,13 +199,17 @@ class MainActivity : ComponentActivity() {
         val wasPlaying = isPlaying.value
         isPlaying.value = false
 
-        lifecycleScope.launch(Dispatchers.IO) {
-            Log.d("PREFS", "Setting selected sound to $selected")
-            getWaveTrack(sounds.value[selectedSoundIndex.value].filename)
-            dataStore.edit { settings ->
-                settings[CURRENT_SOUND_SELECTION_KEY] = selectedSoundIndex.value
-            }
-        }.invokeOnCompletion { if (wasPlaying) onStartPlayback() }
+        if (sounds.value.isNotEmpty() && downloadProgress.value.isNotEmpty() &&
+            downloadProgress.value[sounds.value[selected].filename] == 1f
+        ) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                Log.d("PREFS", "Setting selected sound to $selected")
+                getWaveTrack(sounds.value[selectedSoundIndex.value].filename)
+                dataStore.edit { settings ->
+                    settings[CURRENT_SOUND_SELECTION_KEY] = selectedSoundIndex.value
+                }
+            }.invokeOnCompletion { if (wasPlaying) onStartPlayback() }
+        }
     }
 
     private fun getWaveTrack(filePathString: String) {
@@ -281,7 +291,7 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     App(
-                        downloading = downloading.value,
+                        downloadProgress = downloadProgress.value,
                         sounds = sounds.value,
                         selectedSoundIndex = selectedSoundIndex.value,
                         onSetSelectedSound = { idx: Int -> onSetSelectedSound(idx) },
@@ -375,72 +385,55 @@ class MainActivity : ComponentActivity() {
         Log.d("onCreate", "soundsDir = ${soundsDir.toPath()}")
 
         lifecycleScope.launch(Dispatchers.IO) {
-            dataStore.data.map { prefs ->
+            dataStore.data.first().let { prefs ->
                 prefs[CURRENT_SOUND_SELECTION_KEY]
-            }.collect {
-                Log.d("PREFS", "Current sound selection: $it")
+            }.let {
+                Log.d("onCreate", "Current sound selection: $it")
                 selectedSoundIndex.value = it ?: 0
             }
         }
 
         lifecycleScope.launch {
-            dataStore.data.map { prefs ->
+            dataStore.data.first().let { prefs ->
                 prefs[SOUND_DEF]
-            }.collect { pref ->
+            }.let { pref ->
                 if (pref != null) {
                     Log.d("onCreate", "Getting sound def from pref")
                     sounds.value = Gson().fromJson(
                         pref, Array<SoundDef>::class.java
                     ).toList()
-                    sounds.value.all { sound ->
-                        File(soundsDir, sound.filename).exists()
-                    }.takeIf { it }.let {
-                        Log.d("onCreate", "Took shortcut to initialize sounds")
-                        //downloading.value = false
-                    }
-                } else {
-                    Log.d("onCreate", "No sound def pref")
-                    downloading.value = true
-                }
-            }
-        }
 
-        val downloadWorkTag = "com.kvl.cyclotrack:download-sounds"
-        WorkManager.getInstance(this).let { workManager ->
-            OneTimeWorkRequestBuilder<SoundDownloadWorker>()
-                .addTag(downloadWorkTag)
-                .setInputData(
-                    Data.Builder()
-                        .putString("soundsDir", soundsDir.toString())
-                        .build()
-                )
-                .build().let { request ->
-                    workManager.beginUniqueWork(
-                        downloadWorkTag,
-                        ExistingWorkPolicy.KEEP,
-                        request
-                    ).enqueue()
-                    workManager.getWorkInfoByIdLiveData(request.id)
+                    workManager.getWorkInfosByTagLiveData(downloadSoundWorkTag)
                         .let { downloadOutput ->
-                            downloadOutput.observe(this) { workInfo ->
-                                downloading.value = !workInfo.state.isFinished
-                                if (workInfo.state.isFinished) {
-                                    workInfo.outputData.getString("soundManifest")
-                                        ?.let { jsonString ->
-                                            lifecycleScope.launch(Dispatchers.IO) {
-                                                dataStore.edit { settings ->
-                                                    settings[SOUND_DEF] = jsonString
-                                                }
-                                            }
-                                            sounds.value = Gson().fromJson(
-                                                jsonString, Array<SoundDef>::class.java
-                                            ).toList()
-                                        }
+                            downloadOutput.observe(this@MainActivity) { workInfos ->
+                                workInfos.filterNot { it.state.isFinished }.forEach { workInfo ->
+                                    try {
+                                        getDownloadStatus(
+                                            sounds.value.first {
+                                                it.filename == workInfo.tags.first { tag ->
+                                                    tag.startsWith(
+                                                        "filename:"
+                                                    )
+                                                }.drop("filename:".length)
+                                            },
+                                            workInfo
+                                        )
+                                    } catch (e: NoSuchElementException) {
+                                        Log.e(
+                                            "onCreate",
+                                            "Could not observe running download worker",
+                                            e
+                                        )
+                                        FirebaseCrashlytics.getInstance().recordException(e)
+                                    }
                                 }
                             }
                         }
                 }
+            }
         }
+
+        downloadSounds()
 
         wakeLock =
             (getSystemService(Context.POWER_SERVICE) as PowerManager).run {
@@ -449,7 +442,7 @@ class MainActivity : ComponentActivity() {
 
         firebaseAnalytics = FirebaseAnalytics.getInstance(this)
         FirebaseCrashlytics.getInstance()
-        //NOT SURE THESE ACTUALLY DISABLE LOGGING TO SERVER
+//NOT SURE THESE ACTUALLY DISABLE LOGGING TO SERVER
         firebaseAnalytics.setAnalyticsCollectionEnabled(!BuildConfig.DEBUG)
         FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(!BuildConfig.DEBUG)
         firebaseAnalytics.logEvent(FirebaseAnalytics.Event.SCREEN_VIEW, Bundle().apply {
@@ -457,6 +450,159 @@ class MainActivity : ComponentActivity() {
             putString(FirebaseAnalytics.Param.SCREEN_CLASS, "MainActivity")
         })
 
+    }
+
+    private fun downloadSounds() {
+        Log.d("MainActivity", "Downloading sounds")
+        val downloadSoundManifestWorkTag = "com.kvl.cyclotrack:download-sound-manifest"
+        OneTimeWorkRequestBuilder<SoundManifestDownloadWorker>()
+            .setConstraints(
+                Constraints.Builder()
+                    .setRequiredNetworkType(NetworkType.CONNECTED)
+                    .build()
+            )
+            .setInputData(
+                Data.Builder()
+                    .putString("soundsDir", soundsDir.toString())
+                    .build()
+            )
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.SECONDS)
+            .build().let { request ->
+                workManager.beginUniqueWork(
+                    downloadSoundManifestWorkTag,
+                    ExistingWorkPolicy.KEEP,
+                    request
+                ).enqueue()
+                workManager.getWorkInfoByIdLiveData(request.id)
+                    .let { downloadOutput ->
+                        downloadOutput.observe(this) { workInfo ->
+                            processManifest(workInfo)
+                            downloadFiles(workManager)
+                        }
+                    }
+            }
+    }
+
+    private fun processManifest(workInfo: WorkInfo) {
+        if (workInfo.state == WorkInfo.State.SUCCEEDED) {
+            workInfo.outputData.getString("soundManifest")
+                ?.let { jsonString ->
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        dataStore.edit { settings ->
+                            settings[SOUND_DEF] = jsonString
+                        }
+                    }
+                    sounds.value = Gson().fromJson(
+                        jsonString, Array<SoundDef>::class.java
+                    ).toList()
+
+                    downloadProgress.value.toMutableMap().let { dp ->
+                        Log.d("DOWNLOAD", "dp:${dp}")
+                        sounds.value.forEach { sound ->
+                            if (!dp.containsKey(sound.filename)) {
+                                dp[sound.filename] = 0f
+                            }
+                        }
+                        downloadProgress.value = dp
+                    }
+                }
+        }
+    }
+
+    private fun downloadFiles(workManager: WorkManager) {
+        sounds.value.map { sound ->
+            OneTimeWorkRequestBuilder<SoundDownloadWorker>()
+                .setConstraints(
+                    Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.UNMETERED)
+                        .build()
+                )
+                .addTag(downloadSoundWorkTag)
+                .addTag("filename:${sound.filename}")
+                .setInputData(
+                    Data.Builder()
+                        .putString(
+                            "soundsDir",
+                            soundsDir.toString()
+                        )
+                        .putString("sound", sound.filename)
+                        .build()
+                )
+                .setBackoffCriteria(
+                    BackoffPolicy.EXPONENTIAL,
+                    10,
+                    TimeUnit.SECONDS
+                )
+                .build().let { request ->
+                    workManager.beginUniqueWork(
+                        "$downloadSoundWorkTag-${sound.filename}",
+                        ExistingWorkPolicy.KEEP,
+                        request
+                    ).enqueue()
+                    workManager.getWorkInfoByIdLiveData(request.id)
+                        .let { output ->
+                            output.observe(this) { workInfo ->
+                                if (workInfo != null) getDownloadStatus(sound, workInfo)
+                            }
+                        }
+                }
+        }
+    }
+
+    private fun getDownloadStatus(sound: SoundDef, workInfo: WorkInfo) {
+        when (val state =
+            workInfo.state) {
+            WorkInfo.State.BLOCKED,
+            WorkInfo.State.ENQUEUED,
+            WorkInfo.State.RUNNING -> {
+                workInfo.progress.getFloat(
+                    sound.filename,
+                    -1f
+                ).takeIf { it != -1f }
+                    ?.let { progress ->
+                        downloadProgress.value.toMutableMap()
+                            .let { dp ->
+                                dp[sound.filename] =
+                                    progress
+                                downloadProgress.value =
+                                    dp
+                                Log.v(
+                                    "getDownloadStatus",
+                                    "${sound.filename}: $progress"
+                                )
+                            }
+                    }
+            }
+
+            WorkInfo.State.FAILED -> {
+                FirebaseCrashlytics.getInstance().log("Failed to download ${sound.filename}")
+            }
+
+            WorkInfo.State.SUCCEEDED -> {
+                Log.d("getDownloadStatus", "SUCCESS: ${sound.filename}")
+                downloadProgress.value.toMutableMap()
+                    .let { dp ->
+                        dp[sound.filename] =
+                            1f
+                        downloadProgress.value =
+                            dp
+                    }
+            }
+
+            else -> {
+                Log.d(
+                    "getDownloadStatus",
+                    "state is: ${state.name}"
+                )
+                downloadProgress.value.toMutableMap()
+                    .let { dp ->
+                        dp[sound.filename] =
+                            0f
+                        downloadProgress.value =
+                            dp
+                    }
+            }
+        }
     }
 
     override fun onDestroy() {

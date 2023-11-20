@@ -35,7 +35,7 @@ import java.time.temporal.ChronoUnit
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun App(
-    downloading: Boolean,
+    downloadProgress: Map<String, Float>,
     sounds: List<SoundDef>,
     selectedSoundIndex: Int,
     onSetSelectedSound: (Int) -> Unit,
@@ -83,16 +83,26 @@ fun App(
     val fractionRemaining = remember { mutableStateOf(0f) }
     val pagerState = rememberPagerState(selectedSoundIndex)
     val currentSounds = rememberUpdatedState(newValue = sounds)
-    val currentDownloadStatus = rememberUpdatedState(newValue = downloading)
+    val currentDownloadProgress = rememberUpdatedState(newValue = downloadProgress)
+    val downloading = remember { mutableStateOf(0f) }
 
     LaunchedEffect(pagerState) {
         snapshotFlow { pagerState.currentPage }.collect { page ->
             Log.d("PAGER_STATE", "Page changed to $page")
-            if (currentSounds.value.isNotEmpty() && !currentDownloadStatus.value) {
-                Log.d("PAGER_STATE", "Setting selected sound to $page")
-                onSetSelectedSound(page)
+            Log.d("PAGER_STATE", "Setting selected sound to $page")
+            onSetSelectedSound(page)
+            if (currentSounds.value.isNotEmpty() && currentDownloadProgress.value.isNotEmpty()) {
+                downloading.value =
+                    currentDownloadProgress.value[currentSounds.value[page].filename]
+                        ?: 0f
             }
         }
+    }
+
+    if (currentSounds.value.isNotEmpty() && currentDownloadProgress.value.isNotEmpty()) {
+        downloading.value =
+            currentDownloadProgress.value[currentSounds.value[pagerState.currentPage].filename]
+                ?: 0f
     }
 
     timeRemaining.value = sleepTime?.let {
@@ -136,25 +146,32 @@ fun App(
                 .fillMaxWidth()
                 .weight(1f)
         ) {
-            when (downloading) {
-                true -> {
+            when (downloading.value) {
+                1f -> {
                     CircularProgressIndicator(
+                        progress = fractionRemaining.value,
                         modifier = Modifier
                             .aspectRatio(1f, matchHeightConstraintsFirst = true),
                         strokeWidth = 6.dp
                     )
-                    Text("Downloading\nsounds", textAlign = TextAlign.Center)
+                    Box(Modifier.padding(9.dp)) {
+                        PlayPauseButton(
+                            enabled = buttonEnabled,
+                            onClick = onClick,
+                            isPlaying = isPlaying
+                        )
+                    }
                 }
 
-                else -> CircularProgressIndicator(
-                    progress = fractionRemaining.value,
-                    modifier = Modifier
-                        .aspectRatio(1f, matchHeightConstraintsFirst = true),
-                    strokeWidth = 6.dp
-                )
-            }
-            if (!downloading) Box(Modifier.padding(9.dp)) {
-                PlayPauseButton(enabled = buttonEnabled, onClick = onClick, isPlaying = isPlaying)
+                else -> {
+                    CircularProgressIndicator(
+                        progress = downloading.value,
+                        modifier = Modifier
+                            .aspectRatio(1f, matchHeightConstraintsFirst = true),
+                        strokeWidth = 6.dp
+                    )
+                    Text("Updating...", textAlign = TextAlign.Center)
+                }
             }
         }
         Box(
@@ -165,7 +182,7 @@ fun App(
                 .padding(16.dp)
         ) {
             TimerButtons(
-                enabled = !downloading,
+                enabled = downloading.value == 1f,
                 timers = timers,
                 timeRemaining = timeRemaining.value,
                 sleepTime = sleepTime,
@@ -183,7 +200,7 @@ fun App(
 fun AppPreview() {
     SerenityTheme {
         App(
-            false,
+            emptyMap(),
             listOf(
                 SoundDef(
                     name = "Sound 1",
@@ -217,7 +234,7 @@ fun AppPreview() {
 fun AppDownloadingPreview() {
     SerenityTheme {
         App(
-            true,
+            emptyMap(),
             listOf(
                 SoundDef(
                     name = "Sound 1",

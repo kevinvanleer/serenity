@@ -2,102 +2,162 @@ package com.kvl.serenity
 
 import android.content.Context
 import android.util.Log
-import androidx.datastore.preferences.core.edit
 import androidx.work.CoroutineWorker
 import androidx.work.Data
 import androidx.work.WorkerParameters
-import com.google.auth.oauth2.ServiceAccountCredentials
-import com.google.cloud.storage.BlobId
 import com.google.cloud.storage.StorageException
 import com.google.cloud.storage.StorageOptions
+import com.google.cloud.storage.contrib.nio.CloudStorageConfiguration
+import com.google.cloud.storage.contrib.nio.CloudStorageFileSystem
 import com.google.firebase.crashlytics.FirebaseCrashlytics
-import com.google.gson.Gson
 import com.kvl.serenity.util.calculateMd5
-import java.io.ByteArrayOutputStream
+import com.kvl.serenity.util.debugUseFullBlobs
+import com.kvl.serenity.util.getGcpStorage
+import com.kvl.serenity.util.getServiceAccountCredentials
+import com.kvl.serenity.util.getSoundBlob
+import com.kvl.serenity.util.getSoundPath
+import com.kvl.serenity.util.soundsBucket
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.IOException
+import java.nio.channels.FileChannel
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.StandardOpenOption
 
 class SoundDownloadWorker(private val appContext: Context, workParams: WorkerParameters) :
     CoroutineWorker(appContext, workParams) {
-    private val gcpStorage = StorageOptions.newBuilder()
-        .setCredentials(
-            ServiceAccountCredentials.fromPkcs8(
-                appContext.getString(R.string.serenity_service_account_client_id),
-                appContext.getString(R.string.serenity_service_account_client_email),
-                appContext.getString(R.string.serenity_service_account_private_key),
-                appContext.getString(R.string.serenity_service_account_private_key_id),
-                listOf("https://www.googleapis.com/auth/devstorage.read_only")
-            )
-        )
-        .setProjectId(appContext.getString(R.string.serenity_service_account_project_id))
-        .build().service
 
-    private suspend fun downloadFromManifest(sounds: List<SoundDef>) {
-        val soundsDir = inputData.getString("soundsDir")?.let { File(it) }
-        sounds.map { it.filename }.forEach { filename ->
-            Log.d("GCP", filename)
-            File(
-                soundsDir,
-                filename
-            ).let { file ->
-                try {
-                    val blob = gcpStorage.get(
-                        BlobId.of(
-                            "serenity-sounds", when (BuildConfig.DEBUG) {
-                                true -> "dev/$filename"
-                                else -> filename
-                            }
+    private val logTag = this::class.simpleName
+    override suspend fun doWork(): Result =
+        inputData.getString("soundsDir")?.let { soundsDir ->
+            inputData.getString("sound")?.let { filename ->
+                Log.d(logTag, "doWork $filename: $id")
+                File(
+                    File(soundsDir),
+                    filename
+                ).let { file ->
+                    try {
+                        val blob = getGcpStorage(appContext).get(
+                            getSoundBlob(filename)
                         )
-                    )
-                    when (file.exists() && blob.md5 == calculateMd5(file.path)) {
-                        true -> Log.d("MD5", "MD5s match")
-                        false -> {
-                            Log.d("MD5", "MD5s conflict")
-                            Log.d("MD5", blob.md5)
-                            Log.d("MD5", calculateMd5(file.path).toString())
+                        when (file.exists() && blob.md5 == calculateMd5(file.path)) {
+                            true -> {
+                                Log.d(logTag, "$filename MD5s match")
+                                Result.success()
+                            }
+
+                            false -> {
+                                Log.d(logTag, "$filename MD5s conflict")
+                                downloadFile(blob.md5, file.toPath(), filename)
+                            }
+                        }
+                    } catch (e: StorageException) {
+                        FirebaseCrashlytics.getInstance().recordException(e)
+                        Log.e(logTag, "Failed to download $filename", e)
+                        return when (e.code) {
+                            429, 502, 503, 504 -> Result.retry()
+                            else -> Result.failure()
                         }
                     }
-                    if (!file.exists() || blob.md5 != calculateMd5(file.path)) {
-                        //setProgress(Data.Builder().putFloat(filename, 0f).build())
-                        Log.d("GCP", "Downloading file")
-                        blob.downloadTo(file.toPath())
-                        Log.d("GCP", "Download complete")
+                }
+            } ?: Result.failure()
+        } ?: Result.failure()
+
+    private suspend fun downloadFile(
+        blobMd5: String,
+        filePath: Path,
+        filename: String
+    ): Result =
+        try {
+            withContext(Dispatchers.IO) {
+                FileChannel.open(filePath, StandardOpenOption.CREATE, StandardOpenOption.WRITE)
+            }
+                .use { to ->
+                    Log.d(logTag, "Downloading $filename")
+
+                    CloudStorageFileSystem.forBucket(
+                        soundsBucket,
+                        CloudStorageConfiguration.DEFAULT,
+                        StorageOptions.newBuilder()
+                            .setCredentials(
+                                getServiceAccountCredentials(appContext)
+                            )
+                            .build()
+                    ).let { fs ->
+                        Files.newByteChannel(
+                            fs.getPath("/${getSoundPath(filename)}"),
+                            StandardOpenOption.READ
+                        ).use { from ->
+                            val totalBytes = from.size()
+                            val chunkSize = when (BuildConfig.DEBUG && debugUseFullBlobs) {
+                                false -> (totalBytes / 100 / 1024 * 1024).coerceAtMost(1024 * 1024)
+                                true -> 1024L
+                            }
+                            var startByte = when (to.size() >= totalBytes) {
+                                true -> 0L
+                                else -> to.size()
+                            }
+                            setProgress(
+                                Data.Builder()
+                                    .putFloat(filename, startByte.toFloat() / totalBytes)
+                                    .build()
+                            )
+
+                            from.position(startByte)
+
+                            Log.v(logTag, "$filename chunk size: $chunkSize")
+                            Log.v(logTag, "$filename total download bytes: $totalBytes")
+                            Log.v(logTag, "$filename initial temp file size: ${to.size()}")
+                            Log.v(logTag, "$filename seeking to $startByte")
+
+                            while (to.size() < totalBytes) {
+                                val bytesRead = to.transferFrom(
+                                    from,
+                                    startByte,
+                                    chunkSize
+                                )
+                                startByte += bytesRead
+                                (startByte.toFloat() / totalBytes).let { progress ->
+                                    setProgress(
+                                        Data.Builder()
+                                            .putFloat(filename, progress)
+                                            .build()
+                                    )
+                                    Log.v(logTag, "$filename progress: $progress")
+                                }
+
+                                Log.v(logTag, "$filename downloaded bytes: $startByte")
+                                Log.v(logTag, "$filename channel size: ${to.size()}")
+                                Log.v(logTag, "$filename total bytes: $totalBytes")
+                            }
+                        }
                     }
-                    //setProgress(Data.Builder().putFloat(filename, 1f).build())
-                } catch (e: StorageException) {
-                    FirebaseCrashlytics.getInstance().recordException(e)
-                    Log.e("GCP", "Failed to download $filename", e)
+                }
+            when (blobMd5 != calculateMd5(filePath)) {
+                true -> {
+                    Log.d(logTag, "$filename: MD5 check failed, retrying...")
+                    FirebaseCrashlytics.getInstance()
+                        .log("$filename: MD5 check failed. Will retry.")
+                    Result.retry()
+                }
+
+                else -> {
+                    Log.d(logTag, "$filename: download complete")
+                    Result.success()
                 }
             }
-        }
-    }
-
-    override suspend fun doWork(): Result {
-        try {
-            val blob = gcpStorage.get(
-                BlobId.of(
-                    "serenity-sounds", when (BuildConfig.DEBUG) {
-                        true -> "dev/sound-def.json"
-                        else -> "sound-def.json"
-                    }
-                )
-            )
-            val os = ByteArrayOutputStream()
-            blob.downloadTo(os)
-            Log.d("GCP", "Downloaded manifest")
-            val jsonString = os.toByteArray().decodeToString()
-            appContext.dataStore.edit { settings ->
-                settings[SOUND_DEF] = jsonString
-            }
-            val soundsManifest = Gson().fromJson(
-                jsonString, Array<SoundDef>::class.java
-            ).toList()
-
-            downloadFromManifest(soundsManifest)
-            return Result.success(Data.Builder().putString("soundManifest", jsonString).build())
         } catch (e: StorageException) {
+            Log.e(logTag, "Error downloading $filename", e)
             FirebaseCrashlytics.getInstance().recordException(e)
-            Log.e("GCP", "Failed to download sound manifest", e)
-            return Result.failure()
+            when (e.code) {
+                429, 502, 503, 504 -> Result.retry()
+                else -> Result.failure()
+            }
+        } catch (e: IOException) {
+            Log.e(logTag, "Error downloading $filename", e)
+            FirebaseCrashlytics.getInstance().recordException(e)
+            Result.retry()
         }
-    }
 }
