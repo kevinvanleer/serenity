@@ -22,6 +22,8 @@
 
 -keep class com.google.api.client.json.** {*;}
 -keep class com.google.api.services.storage.** {*;}
+-keep class com.google.gson.reflect.TypeToken { *; }
+-keep class * extends com.google.gson.reflect.TypeToken
 
 -dontwarn com.google.appengine.api.urlfetch.FetchOptions$Builder
 -dontwarn com.google.appengine.api.urlfetch.FetchOptions

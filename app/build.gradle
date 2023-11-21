@@ -15,7 +15,7 @@ android {
         applicationId "com.kvl.serenity"
         minSdk 28
         targetSdk 33
-        versionCode 19
+        versionCode 20
         versionName "Landscape orientation"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
