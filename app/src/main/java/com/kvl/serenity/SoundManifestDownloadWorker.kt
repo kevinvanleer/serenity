@@ -11,7 +11,7 @@ import com.google.cloud.storage.BlobId
 import com.google.cloud.storage.StorageException
 import com.google.cloud.storage.StorageOptions
 import com.google.firebase.crashlytics.FirebaseCrashlytics
-import com.kvl.serenity.util.debugUseFullBlobs
+import com.kvl.serenity.util.useDebugBlobs
 import java.io.ByteArrayOutputStream
 
 class SoundManifestDownloadWorker(private val appContext: Context, workParams: WorkerParameters) :
@@ -33,7 +33,7 @@ class SoundManifestDownloadWorker(private val appContext: Context, workParams: W
         try {
             val blob = gcpStorage.get(
                 BlobId.of(
-                    "serenity-sounds", when (BuildConfig.DEBUG && debugUseFullBlobs) {
+                    "serenity-sounds", when (BuildConfig.DEBUG && useDebugBlobs) {
                         true -> "dev/sound-def.json"
                         else -> "sound-def.json"
                     }

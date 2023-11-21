@@ -11,12 +11,12 @@ import com.google.cloud.storage.contrib.nio.CloudStorageConfiguration
 import com.google.cloud.storage.contrib.nio.CloudStorageFileSystem
 import com.google.firebase.crashlytics.FirebaseCrashlytics
 import com.kvl.serenity.util.calculateMd5
-import com.kvl.serenity.util.debugUseFullBlobs
 import com.kvl.serenity.util.getGcpStorage
 import com.kvl.serenity.util.getServiceAccountCredentials
 import com.kvl.serenity.util.getSoundBlob
 import com.kvl.serenity.util.getSoundPath
 import com.kvl.serenity.util.soundsBucket
+import com.kvl.serenity.util.useDebugBlobs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -91,7 +91,7 @@ class SoundDownloadWorker(private val appContext: Context, workParams: WorkerPar
                             StandardOpenOption.READ
                         ).use { from ->
                             val totalBytes = from.size()
-                            val chunkSize = when (BuildConfig.DEBUG && debugUseFullBlobs) {
+                            val chunkSize = when (BuildConfig.DEBUG && useDebugBlobs) {
                                 false -> (totalBytes / 100 / 1024 * 1024).coerceAtMost(1024 * 1024)
                                 true -> 1024L
                             }

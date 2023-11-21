@@ -11,7 +11,7 @@ import com.kvl.serenity.R
 import java.io.File
 
 const val soundsBucket = "serenity-sounds"
-const val debugUseFullBlobs = false
+const val useDebugBlobs = true
 fun getServiceAccountCredentials(appContext: Context): ServiceAccountCredentials =
     ServiceAccountCredentials.fromPkcs8(
         appContext.getString(R.string.serenity_service_account_client_id),
@@ -28,7 +28,7 @@ fun getGcpStorage(appContext: Context): Storage = StorageOptions.newBuilder()
     .setProjectId(appContext.getString(R.string.serenity_service_account_project_id))
     .build().service
 
-fun getSoundPath(filename: String) = when (BuildConfig.DEBUG && debugUseFullBlobs) {
+fun getSoundPath(filename: String) = when (BuildConfig.DEBUG && useDebugBlobs) {
     true -> "dev/$filename"
     else -> filename
 }
