@@ -30,6 +30,10 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.lifecycle.lifecycleScope
+import androidx.window.core.layout.WindowHeightSizeClass
+import androidx.window.core.layout.WindowSizeClass
+import androidx.window.core.layout.WindowWidthSizeClass
+import androidx.window.layout.WindowMetricsCalculator
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.Data
@@ -44,6 +48,7 @@ import com.google.android.play.core.review.model.ReviewErrorCode
 import com.google.firebase.analytics.FirebaseAnalytics
 import com.google.firebase.crashlytics.FirebaseCrashlytics
 import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import com.kvl.serenity.ui.theme.SerenityTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -84,6 +89,8 @@ class MainActivity : ComponentActivity() {
     private val selectedSoundIndex = mutableStateOf(0)
     private val sounds = mutableStateOf((emptyList<SoundDef>()))
     private val downloadProgress = mutableStateOf((emptyMap<String, Float>()))
+    private val widthWindowSizeClass = mutableStateOf(WindowWidthSizeClass.COMPACT)
+    private val heightWindowSizeClass = mutableStateOf(WindowHeightSizeClass.MEDIUM)
 
     fun pausePlayback() {
         Log.d("MediaPlayer", "Pausing playback")
@@ -177,10 +184,10 @@ class MainActivity : ComponentActivity() {
             dataStore.data.first().let { prefs ->
                 prefs[START_PLAYBACK_COUNT]
             }.let {
-                Log.d("onCreate", "Playback count: $it")
+                Log.d("MainActivity", "Playback count: $it")
                 val playbackCount = (it ?: 0) + 1
                 when {
-                    playbackCount >= 10 -> {
+                    playbackCount % 10 == 0 -> {
                         val manager = ReviewManagerFactory.create(this@MainActivity)
                         val request = manager.requestReviewFlow()
                         request.addOnCompleteListener { task ->
@@ -199,16 +206,21 @@ class MainActivity : ComponentActivity() {
                                 // There was some problem, log or handle the error code.
                                 @ReviewErrorCode val reviewErrorCode =
                                     (task.exception as ReviewException).errorCode
+                                FirebaseCrashlytics.getInstance()
+                                    .recordException(task.exception as ReviewException)
+                                Log.e(
+                                    "MainActivity",
+                                    "Review error: $reviewErrorCode",
+                                    task.exception as ReviewException
+                                )
                             }
                         }
                     }
 
-                    else -> {
-                        dataStore.edit { settings ->
-                            settings[START_PLAYBACK_COUNT] = playbackCount
-                        }
-                        startPlayback()
-                    }
+                    else -> startPlayback()
+                }
+                dataStore.edit { settings ->
+                    settings[START_PLAYBACK_COUNT] = playbackCount
                 }
             }
         }
@@ -329,8 +341,21 @@ class MainActivity : ComponentActivity() {
 
     }
 
+    private fun computeWindowSizeClasses() {
+        val metrics = WindowMetricsCalculator.getOrCreate().computeCurrentWindowMetrics(this)
+        val width = metrics.bounds.width()
+        val height = metrics.bounds.height()
+        val density = resources.displayMetrics.density
+        val windowSizeClass = WindowSizeClass.compute(width / density, height / density)
+        // COMPACT, MEDIUM, or EXPANDED
+        widthWindowSizeClass.value = windowSizeClass.windowWidthSizeClass
+        // COMPACT, MEDIUM, or EXPANDED
+        heightWindowSizeClass.value = windowSizeClass.windowHeightSizeClass
+    }
+
     private fun initializeUi() {
-        Log.d("onCreate", "initializeUi")
+        Log.d("MainActivity", "initializeUi")
+        computeWindowSizeClasses()
         setContent {
             SerenityTheme {
                 Surface(
@@ -338,6 +363,8 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     App(
+                        widthWindowSizeClass = widthWindowSizeClass.value,
+                        heightWindowSizeClass = heightWindowSizeClass.value,
                         downloadProgress = downloadProgress.value,
                         sounds = sounds.value,
                         selectedSoundIndex = selectedSoundIndex.value,
@@ -388,6 +415,13 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        Log.d("MainActivity", "saving instance state")
+        outState.putBoolean("is_playing", isPlaying.value)
+        outState.putString("download_progress_json", Gson().toJson(downloadProgress.value))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -426,18 +460,32 @@ class MainActivity : ComponentActivity() {
             }, "sounds"
         )
         if (!soundsDir.exists()) {
-            Log.d("onCreate", "Creating sounds directory")
+            Log.d("MainActivity", "Creating sounds directory")
             soundsDir.mkdirs()
         }
-        Log.d("onCreate", "soundsDir = ${soundsDir.toPath()}")
+        Log.d("MainActivity", "soundsDir = ${soundsDir.toPath()}")
 
         lifecycleScope.launch(Dispatchers.IO) {
             dataStore.data.first().let { prefs ->
                 prefs[CURRENT_SOUND_SELECTION_KEY]
             }.let {
-                Log.d("onCreate", "Current sound selection: $it")
+                Log.d("MainActivity", "Current sound selection: $it")
                 selectedSoundIndex.value = it ?: 0
             }
+        }
+
+
+        savedInstanceState?.getBoolean("is_playing")?.let {
+            Log.d("MainActivity", "Restoring saved play state")
+            isPlaying.value = it
+        }
+        savedInstanceState?.getString("download_progress_json")?.let {
+            val mapType = object : TypeToken<Map<String, Float>>() {}.type
+            Log.d("MainActivity", it)
+            downloadProgress.value = Gson().fromJson(
+                it, mapType
+            )
+            Log.d("MainActivity", downloadProgress.value.toString())
         }
 
         lifecycleScope.launch {
@@ -445,7 +493,7 @@ class MainActivity : ComponentActivity() {
                 prefs[SOUND_DEF]
             }.let { pref ->
                 if (pref != null) {
-                    Log.d("onCreate", "Getting sound def from pref")
+                    Log.d("MainActivity", "Getting sound def from pref")
                     sounds.value = Gson().fromJson(
                         pref, Array<SoundDef>::class.java
                     ).toList()
@@ -453,27 +501,28 @@ class MainActivity : ComponentActivity() {
                     workManager.getWorkInfosByTagLiveData(downloadSoundWorkTag)
                         .let { downloadOutput ->
                             downloadOutput.observe(this@MainActivity) { workInfos ->
-                                workInfos.filterNot { it.state.isFinished }.forEach { workInfo ->
-                                    try {
-                                        getDownloadStatus(
-                                            sounds.value.first {
-                                                it.filename == workInfo.tags.first { tag ->
-                                                    tag.startsWith(
-                                                        "filename:"
-                                                    )
-                                                }.drop("filename:".length)
-                                            },
-                                            workInfo
-                                        )
-                                    } catch (e: NoSuchElementException) {
-                                        Log.e(
-                                            "onCreate",
-                                            "Could not observe running download worker",
-                                            e
-                                        )
-                                        FirebaseCrashlytics.getInstance().recordException(e)
+                                workInfos?.filterNot { it.state.isFinished }
+                                    ?.forEach { workInfo ->
+                                        try {
+                                            getDownloadStatus(
+                                                sounds.value.first {
+                                                    it.filename == workInfo.tags.first { tag ->
+                                                        tag.startsWith(
+                                                            "filename:"
+                                                        )
+                                                    }.drop("filename:".length)
+                                                },
+                                                workInfo
+                                            )
+                                        } catch (e: NoSuchElementException) {
+                                            Log.e(
+                                                "MainActivity",
+                                                "Could not observe running download worker",
+                                                e
+                                            )
+                                            FirebaseCrashlytics.getInstance().recordException(e)
+                                        }
                                     }
-                                }
                             }
                         }
                 }

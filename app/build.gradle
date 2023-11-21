@@ -15,8 +15,8 @@ android {
         applicationId "com.kvl.serenity"
         minSdk 28
         targetSdk 33
-        versionCode 18
-        versionName "Handle interrupted downloads"
+        versionCode 19
+        versionName "Landscape orientation"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -74,6 +74,9 @@ configurations.all {
 }
 
 dependencies {
+    implementation 'androidx.window:window:1.1.0'
+    implementation 'androidx.window:window-core:1.1.0'
+
     // Next line intended to resolve issue reported in Google Play Console
     runtimeOnly 'androidx.fragment:fragment-ktx:1.6.1'
     implementation platform('com.google.cloud:libraries-bom:26.24.0')
