@@ -38,6 +38,9 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
+import com.google.android.play.core.review.ReviewException
+import com.google.android.play.core.review.ReviewManagerFactory
+import com.google.android.play.core.review.model.ReviewErrorCode
 import com.google.firebase.analytics.FirebaseAnalytics
 import com.google.firebase.crashlytics.FirebaseCrashlytics
 import com.google.gson.Gson
@@ -59,6 +62,7 @@ const val VOLUME_RAMP_TIME = 2000L
 
 val Context.dataStore by preferencesDataStore(name = "state")
 val CURRENT_SOUND_SELECTION_KEY = intPreferencesKey("current_sound_selection")
+val START_PLAYBACK_COUNT = intPreferencesKey("start_playback_count")
 val SOUND_DEF = stringPreferencesKey("sound_def")
 
 class MainActivity : ComponentActivity() {
@@ -154,7 +158,7 @@ class MainActivity : ComponentActivity() {
         //}
     }
 
-    private fun onStartPlayback() {
+    private fun startPlayback() {
         updatePermissionGrants()
         if (!wakeLock.isHeld) wakeLock.acquire(Duration.ofHours(10).toMillis())
         firebaseAnalytics.logEvent("start_playback", null)
@@ -166,6 +170,49 @@ class MainActivity : ComponentActivity() {
                 shaper.apply(VolumeShaper.Operation.PLAY)
             }
         }
+    }
+
+    private fun onStartPlayback() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            dataStore.data.first().let { prefs ->
+                prefs[START_PLAYBACK_COUNT]
+            }.let {
+                Log.d("onCreate", "Playback count: $it")
+                val playbackCount = (it ?: 0) + 1
+                when {
+                    playbackCount >= 10 -> {
+                        val manager = ReviewManagerFactory.create(this@MainActivity)
+                        val request = manager.requestReviewFlow()
+                        request.addOnCompleteListener { task ->
+                            if (task.isSuccessful) {
+                                // We got the ReviewInfo object
+                                val reviewInfo = task.result
+                                val flow = manager.launchReviewFlow(this@MainActivity, reviewInfo)
+                                flow.addOnCompleteListener { _ ->
+                                    // The flow has finished. The API does not indicate whether the user
+                                    // reviewed or not, or even whether the review dialog was shown. Thus, no
+                                    // matter the result, we continue our app flow.
+                                    startPlayback()
+                                }
+                            } else {
+                                startPlayback()
+                                // There was some problem, log or handle the error code.
+                                @ReviewErrorCode val reviewErrorCode =
+                                    (task.exception as ReviewException).errorCode
+                            }
+                        }
+                    }
+
+                    else -> {
+                        dataStore.edit { settings ->
+                            settings[START_PLAYBACK_COUNT] = playbackCount
+                        }
+                        startPlayback()
+                    }
+                }
+            }
+        }
+
     }
 
     private fun onPausePlayback() {
