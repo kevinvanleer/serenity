@@ -523,8 +523,10 @@ class MainActivity : ComponentActivity() {
                 workManager.getWorkInfoByIdLiveData(request.id)
                     .let { downloadOutput ->
                         downloadOutput.observe(this) { workInfo ->
-                            processManifest(workInfo)
-                            downloadFiles(workManager)
+                            if (workInfo != null) {
+                                processManifest(workInfo)
+                                downloadFiles(workManager)
+                            }
                         }
                     }
             }
