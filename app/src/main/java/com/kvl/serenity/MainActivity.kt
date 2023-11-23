@@ -15,6 +15,7 @@ import android.os.Bundle
 import android.os.CountDownTimer
 import android.os.Environment
 import android.os.PowerManager
+import android.provider.Settings
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -537,16 +538,20 @@ class MainActivity : ComponentActivity() {
             }
 
         firebaseAnalytics = FirebaseAnalytics.getInstance(this)
-        FirebaseCrashlytics.getInstance()
 //NOT SURE THESE ACTUALLY DISABLE LOGGING TO SERVER
-        firebaseAnalytics.setAnalyticsCollectionEnabled(!BuildConfig.DEBUG)
-        FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(!BuildConfig.DEBUG)
+        firebaseAnalytics.setAnalyticsCollectionEnabled(shouldCollectAnalytics())
+        FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(shouldCollectAnalytics())
         firebaseAnalytics.logEvent(FirebaseAnalytics.Event.SCREEN_VIEW, Bundle().apply {
             putString(FirebaseAnalytics.Param.SCREEN_NAME, "MainActivity")
             putString(FirebaseAnalytics.Param.SCREEN_CLASS, "MainActivity")
         })
 
     }
+
+    private fun shouldCollectAnalytics(): Boolean =
+        Settings.System.getString(this.contentResolver, "firebase.test.lab").let {
+            ("true" == it) || !BuildConfig.DEBUG
+        }
 
     private fun downloadSounds() {
         Log.d("MainActivity", "Downloading sounds")
