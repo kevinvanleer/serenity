@@ -96,7 +96,13 @@ class MainActivity : ComponentActivity() {
     fun pausePlayback() {
         Log.d("MediaPlayer", "Pausing playback")
         if (::wakeLock.isInitialized && wakeLock.isHeld) wakeLock.release()
-        if (::waveTrack.isInitialized) waveTrack.pause()
+        try {
+            if (::waveTrack.isInitialized) if (waveTrack.playState == AudioTrack.PLAYSTATE_PLAYING) waveTrack.pause()
+        } catch (e: IllegalStateException) {
+            Log.e("MediaPlayer", "Failed to pause", e)
+            FirebaseCrashlytics.getInstance()
+                .recordException(e)
+        }
         isPlaying.value = false
         enablePlayback.value = true
         sleepTime.value = null
@@ -426,6 +432,22 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        firebaseAnalytics = FirebaseAnalytics.getInstance(this)
+
+        //NOT SURE THESE ACTUALLY DISABLE LOGGING TO SERVER
+        firebaseAnalytics.setAnalyticsCollectionEnabled(shouldCollectAnalytics())
+        FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(shouldCollectAnalytics())
+
+        wakeLock =
+            (getSystemService(Context.POWER_SERVICE) as PowerManager).run {
+                newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Serenity::PlaybackWakeLock")
+            }
+
+        firebaseAnalytics.logEvent(FirebaseAnalytics.Event.SCREEN_VIEW, Bundle().apply {
+            putString(FirebaseAnalytics.Param.SCREEN_NAME, "MainActivity")
+            putString(FirebaseAnalytics.Param.SCREEN_CLASS, "MainActivity")
+        })
+
         updatePermissionGrants()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -531,21 +553,6 @@ class MainActivity : ComponentActivity() {
         }
 
         downloadSounds()
-
-        wakeLock =
-            (getSystemService(Context.POWER_SERVICE) as PowerManager).run {
-                newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Serenity::PlaybackWakeLock")
-            }
-
-        firebaseAnalytics = FirebaseAnalytics.getInstance(this)
-//NOT SURE THESE ACTUALLY DISABLE LOGGING TO SERVER
-        firebaseAnalytics.setAnalyticsCollectionEnabled(shouldCollectAnalytics())
-        FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(shouldCollectAnalytics())
-        firebaseAnalytics.logEvent(FirebaseAnalytics.Event.SCREEN_VIEW, Bundle().apply {
-            putString(FirebaseAnalytics.Param.SCREEN_NAME, "MainActivity")
-            putString(FirebaseAnalytics.Param.SCREEN_CLASS, "MainActivity")
-        })
-
     }
 
     private fun shouldCollectAnalytics(): Boolean =
